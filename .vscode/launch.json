@@ -1,0 +1,24 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "IndexBuilderMain",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "/home/jonathan/Desktop/qlever_fork/build/IndexBuilderMain",
+            "cwd": "/home/jonathan/Desktop/qlever/qlever-indices/olympics",
+            "args": ["-F", "ttl", "-f", "-", "-i", "olympics", "-s", "olympics.settings.json", "<", "${workspaceFolder}/../qlever/qlever-indices/olympics/olympics.nt"]
+        },
+        {
+            "name": "ServerMain",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "/home/jonathan/Desktop/qlever_fork/build/ServerMain",
+            "cwd": "/home/jonathan/Desktop/qlever/qlever-indices/olympics",
+            "args": ["-i", "olympics", "-j", "8", "-p", "7019", "-m", "5", "-c", "2", "-e", "1", "-k", "100", "-a", "olympics_7643543846"]
+        }
+    ]
+}
