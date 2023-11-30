@@ -42,7 +42,7 @@ namespace columnBasedIdTable {
 // almost all entries in the join columns have to be accessed, but only a
 // fraction of the entries in the other columns.
 //
-// The `IdTable` has various member functions for directl access to specific
+// The `IdTable` has various member functions for direct access to specific
 // elements, as well as a generic `iterator` interface with `begin()` and
 // `end()` member functions. These iterators are random-access iterators with
 // respect to the rows and can be passed to any STL algorithm, e.g. `std::sort`.

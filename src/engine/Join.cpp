@@ -453,6 +453,19 @@ void Join::join(const IdTable& a, ColumnIndex jc1, const IdTable& b,
   LOG(DEBUG) << "B: width = " << b.numColumns() << ", size = " << b.size()
              << "\n";
 
+  LOG(INFO) << "join variable: " << this->_joinVar._name << std::endl;
+  LOG(INFO) << "a and b get joined, first 4 rows of first column:" << std::endl;
+  LOG(INFO) << a[0][0] << "     " << b[0][0] << std::endl;
+  LOG(INFO) << a[1][0] << "     " << b[1][0] << std::endl;
+  LOG(INFO) << a[2][0] << "     " << b[2][0] << std::endl;
+  LOG(INFO) << a[3][0] << "     " << b[3][0] << std::endl;
+
+  std::string roughmatch = "?height";  // only name and not "true" variable
+  if (roughmatch.compare(this->_joinVar._name) == 0) {
+    LOG(INFO) << "-----------inside of my own if ----------------" << std::endl;
+    
+  }
+
   // Check trivial case.
   if (a.empty() || b.empty()) {
     return;

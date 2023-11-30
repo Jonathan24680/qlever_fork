@@ -380,7 +380,7 @@ Awaitable<void> Server::process(
         "Request with URL parameters, but none of them could be processed");
   }
 
-  // At this point, we only have a path and no URL paraeters. We then interpret
+  // At this point, we only have a path and no URL parameters. We then interpret
   // the request as a request for a file. However, only files from a very
   // restricted whitelist (see below) will actually be served.
   //
@@ -676,6 +676,7 @@ boost::asio::awaitable<void> Server::processQuery(
     LOG(INFO) << "Query planning done in " << timeForQueryPlanning.count()
               << " ms" << std::endl;
     LOG(TRACE) << qet.asString() << std::endl;
+    LOG(INFO) << qet.asString() << " ----------------------------" << std::endl;
 
     // Common code for sending responses for the streamable media types
     // (tsv, csv, octet-stream, turtle).

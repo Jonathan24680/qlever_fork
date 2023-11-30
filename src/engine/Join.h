@@ -89,7 +89,7 @@ class Join : public Operation {
 
   /**
    * @brief Joins IdTables a and b on join column jc2, returning
-   * the result in dynRes. Creates a cross product for matching rows.
+   * the result in result. Creates a cross product for matching rows.
    *
    * This should be a switch, which shoud decide which algorithm to use for
    * joining two IdTables.

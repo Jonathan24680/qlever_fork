@@ -132,6 +132,10 @@ ResultTable IndexScan::computeResult() {
   AD_CORRECTNESS_CHECK(idTable.numColumns() == numVariables_);
   LOG(DEBUG) << "IndexScan result computation done.\n";
 
+  LOG(INFO) << idTable[0][0] << std::endl;
+  LOG(INFO) << idTable[1][0] << std::endl;
+  LOG(INFO) << idTable[2][0] << std::endl;
+
   return {std::move(idTable), resultSortedOn(), LocalVocab{}};
 }
 

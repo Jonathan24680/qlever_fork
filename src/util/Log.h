@@ -17,7 +17,7 @@
 #include "./StringUtils.h"
 
 #ifndef LOGLEVEL
-#define LOGLEVEL 3
+#define LOGLEVEL 6
 #endif
 
 #define LOG(x)      \

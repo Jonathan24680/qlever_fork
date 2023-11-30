@@ -201,6 +201,7 @@ ExportQueryExecutionTrees::idToStringAndType(const Index& index, Id id,
       // values, we can use `index.getVocab().indexToOptionalString()` directly.
       std::optional<string> entity =
           index.idToOptionalString(id.getVocabIndex());
+      LOG(INFO) << id.getVocabIndex() << " " << entity.value_or("dummy") << std::endl;
       AD_CONTRACT_CHECK(entity.has_value());
       if constexpr (onlyReturnLiterals) {
         if (!entity.value().starts_with('"')) {
@@ -630,6 +631,7 @@ nlohmann::json ExportQueryExecutionTrees::computeQueryResultAsQLeverJSON(
     ad_utility::Timer& requestTimer, uint64_t maxSend) {
   shared_ptr<const ResultTable> resultTable = qet.getResult();
   resultTable->logResultSize();
+  LOG(INFO) << resultTable->asDebugString() << std::endl;
   auto timeResultComputation = requestTimer.msecs();
 
   size_t resultSize = resultTable->size();
