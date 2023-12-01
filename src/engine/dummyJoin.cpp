@@ -1,4 +1,7 @@
 #include "dummyJoin.h"
+#include "util/AllocatorWithLimit.h"
+#include "util/MemorySize/MemorySize.h"
+#include "global/ValueId.h"
 
 // soll eine Klasse sein, welche aus dem nichts ein Ergebnis erzeugt
 
@@ -42,9 +45,21 @@ vector<ColumnIndex> dummyJoin::resultSortedOn() const {
 }
 
 ResultTable dummyJoin::computeResult() { // muss angepasst werden
-    // soll einfach nur eine random result table erstellen, welche alles erstellt, sodass es
-    // mit resultwidth usw. passt
+    // soll einfach nur eine random result table erstellen, welche alles
+    // enthält, sodass es mit resultwidth usw. passt
     // return {};
+    // die resulttable kann ein leeres localvocab haben
+    ad_utility::MemorySize limit = ad_utility::MemorySize::bytes(1024);
+    ad_utility::AllocatorWithLimit<ValueId> allocator =
+            ad_utility::makeAllocatorWithLimit<ValueId>(limit);
+    IdTable idtable = IdTable(1, allocator);
+    for (int i = 0; i < 10; i++) {
+        ValueId toAdd = ValueId::makeFromInt(i);
+        idtable.push_back({toAdd});
+    }
+    LocalVocab lv = {}; // let's assume, this result table has no local vocabs
+    std::vector<ColumnIndex> sortedBy = {0};
+    return ResultTable(std::move(idtable), {}, std::move(lv));
 }
 
 VariableToColumnMap dummyJoin::computeVariableToColumnMap() const {
