@@ -62,64 +62,6 @@ TEST(dummyJoin, testHelper) {
     ASSERT_EQ(idTable2[2][1].getInt(), 1010);
 }
 
-ResultTable computeResult(dummyJoin* dj) {
-    IdTable result((*dj).getResultWidth(), (*dj)._allocator);
-    size_t row_index_result = 0;
-
-    std::shared_ptr<const ResultTable> res_left = (*dj)._left->getResult();
-    std::shared_ptr<const ResultTable> res_right = (*dj)._right->getResult();
-    if (res_left->size() == 0 || res_right->size() == 0) {
-        return ResultTable(std::move(result), {}, {});
-    } else {
-        const IdTable* ida = &res_left->idTable();
-        const IdTable* idb = &res_right->idTable();
-        size_t row_a = 0;
-        size_t row_b = 0;
-        while (row_a < ida->size() && row_b < idb->size()) {
-            ValueId a = (*ida).at(row_a, (*dj)._leftJoinCol);
-            ValueId b = (*idb).at(row_b, (*dj)._rightJoinCol);
-            if (a == b) {
-                // add row
-                result.emplace_back();
-                size_t rescol = 0;
-                if ((*dj)._keepJoinColumn) {
-                    result.at(row_index_result, rescol) = a;
-                    rescol += 1;
-                }
-                size_t col = 0;
-                // TODO: create method in method for iterating through rows
-                while (col < ida->numColumns()) {
-                    if (col != (*dj)._leftJoinCol) {
-                        result.at(row_index_result, rescol) = 
-                            (*ida).at(row_a, col);
-                        rescol += 1;
-                    }
-                    col += 1;
-                }
-                col = 0;
-                while (col < idb->numColumns()) {
-                    if (col != (*dj)._rightJoinCol) {
-                        result.at(row_index_result, rescol) = 
-                            (*idb).at(row_b, col);
-                        rescol += 1;
-                    }
-                    col += 1;
-                }
-
-                row_index_result += 1;
-                
-                row_a += 1;
-                row_b += 1;
-            } else if (a < b) {
-                row_a += 1;
-            } else if (a > b) {
-                row_b += 1;
-            }
-        }
-        return ResultTable(std::move(result), {}, {});
-    }
-}
-
 // test the dummyJoin Class with two child operations
 TEST(dummyJoin, twoChildren) {
     //initialize object
@@ -143,7 +85,7 @@ TEST(dummyJoin, twoChildren) {
     
     // test object
     ASSERT_EQ(dj._variablesLeft.size(), 2);
-    ResultTable rt = computeResult(&dj);
+    ResultTable rt = dj.computeResult();
     ASSERT_EQ(rt.width(), 3);
     ASSERT_EQ(rt.width(), dj.getResultWidth());
     ASSERT_EQ(rt.size(), 5);
