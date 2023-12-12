@@ -22,9 +22,9 @@ dummyJoin::dummyJoin(QueryExecutionContext* qec,
     ValuesForTesting operationRight = ValuesForTesting(qec,
         std::move(rightChildTable), std::move(variablesRight)); */
     _left = ad_utility::makeExecutionTree<ValuesForTesting>(qec,
-        std::move(leftChildTable),std::move(variablesLeft));
+        std::move(leftChildTable),variablesLeft);
     _right = ad_utility::makeExecutionTree<ValuesForTesting>(qec,
-        std::move(rightChildTable), std::move(variablesRight));
+        std::move(rightChildTable), variablesRight);
     _leftJoinCol = t1JoinCol;
     _rightJoinCol = t2JoinCol;
     _keepJoinColumn = keepJoinColumn;

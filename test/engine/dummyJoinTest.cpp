@@ -6,6 +6,7 @@
 #include "util/AllocatorWithLimit.h"
 #include "index/Index.h"
 #include "parser/data/Variable.h"
+#include "engine/QueryExecutionTree.h"
 
 TEST(dummyJoin, firstTest) {
     dummyJoin dj = dummyJoin();
@@ -61,9 +62,62 @@ TEST(dummyJoin, testHelper) {
     ASSERT_EQ(idTable2[2][1].getInt(), 1010);
 }
 
-void computeResult(dummyJoin* dj) {
-    std::optional<Variable> test = dj->_variablesLeft.at(0);
+ResultTable computeResult(dummyJoin* dj) {
     IdTable result((*dj).getResultWidth(), (*dj)._allocator);
+    size_t row_index_result = 0;
+
+    std::shared_ptr<const ResultTable> res_left = (*dj)._left->getResult();
+    std::shared_ptr<const ResultTable> res_right = (*dj)._right->getResult();
+    if (res_left->size() == 0 || res_right->size() == 0) {
+        return ResultTable(std::move(result), {}, {});
+    } else {
+        const IdTable* ida = &res_left->idTable();
+        const IdTable* idb = &res_right->idTable();
+        size_t row_a = 0;
+        size_t row_b = 0;
+        while (row_a < ida->size() && row_b < idb->size()) {
+            ValueId a = (*ida).at(row_a, (*dj)._leftJoinCol);
+            ValueId b = (*idb).at(row_b, (*dj)._rightJoinCol);
+            if (a == b) {
+                // add row
+                result.emplace_back();
+                size_t rescol = 0;
+                if ((*dj)._keepJoinColumn) {
+                    result.at(row_index_result, rescol) = a;
+                    rescol += 1;
+                }
+                size_t col = 0;
+                // TODO: create method in method for iterating through rows
+                while (col < ida->numColumns()) {
+                    if (col != (*dj)._leftJoinCol) {
+                        result.at(row_index_result, rescol) = 
+                            (*ida).at(row_a, col);
+                        rescol += 1;
+                    }
+                    col += 1;
+                }
+                col = 0;
+                while (col < idb->numColumns()) {
+                    if (col != (*dj)._rightJoinCol) {
+                        result.at(row_index_result, rescol) = 
+                            (*idb).at(row_b, col);
+                        rescol += 1;
+                    }
+                    col += 1;
+                }
+
+                row_index_result += 1;
+                
+                row_a += 1;
+                row_b += 1;
+            } else if (a < b) {
+                row_a += 1;
+            } else if (a > b) {
+                row_b += 1;
+            }
+        }
+        return ResultTable(std::move(result), {}, {});
+    }
 }
 
 // test the dummyJoin Class with two child operations
@@ -76,18 +130,44 @@ TEST(dummyJoin, twoChildren) {
     QueryExecutionContext qec = QueryExecutionContext(Index{allocator}, &qrc,
     allocator, SortPerformanceEstimator{});
     std::vector<std::optional<Variable>> variablesLeft{
-        Variable{"?VarLeft_1"}, Variable{"?JoinVar"}};
-    variablesLeft.push_back(Variable{"?test"});
+        Variable{"?JoinVar"}, Variable{"?VarLeft_1"}};
     std::vector<std::optional<Variable>> variablesRight{
-        Variable{"?VarRigth_1"}, Variable{"?JoinVar"}};
+        Variable{"?JoinVar"}, Variable{"?VarRight_1"}};
     IdTable leftIdTable(variablesLeft.size(), allocator);
     IdTable rightIdTable(variablesRight.size(), allocator);
     fillIdTableWithData(&leftIdTable, 10, 2, 2);
     fillIdTableWithData(&rightIdTable, 10, 2, 4);
-    dummyJoin dj(&qec, nullptr, nullptr, 1, 1, true,
+    dummyJoin dj(&qec, nullptr, nullptr, 0, 0, true,
         std::move(leftIdTable), std::move(variablesLeft),
         std::move(rightIdTable), std::move(variablesRight));
+    
     // test object
     ASSERT_EQ(dj._variablesLeft.size(), 2);
-    computeResult(&dj);
+    ResultTable rt = computeResult(&dj);
+    ASSERT_EQ(rt.width(), 3);
+    ASSERT_EQ(rt.width(), dj.getResultWidth());
+    ASSERT_EQ(rt.size(), 5);
+    ASSERT_EQ(rt.idTable().at(0, 0).getInt(), 0);
+    ASSERT_EQ(rt.idTable().at(0, 1).getInt(), 1000);
+    ASSERT_EQ(rt.idTable().at(0, 2).getInt(), 1000);
+    ASSERT_EQ(rt.idTable().at(1, 0).getInt(), 4);
+    ASSERT_EQ(rt.idTable().at(1, 1).getInt(), 1004);
+    ASSERT_EQ(rt.idTable().at(1, 2).getInt(), 1004);
+    ASSERT_EQ(rt.idTable().at(2, 0).getInt(), 8);
+    ASSERT_EQ(rt.idTable().at(2, 1).getInt(), 1008);
+    ASSERT_EQ(rt.idTable().at(2, 2).getInt(), 1008);
+    ASSERT_EQ(rt.idTable().at(3, 0).getInt(), 12);
+    ASSERT_EQ(rt.idTable().at(3, 1).getInt(), 1012);
+    ASSERT_EQ(rt.idTable().at(3, 2).getInt(), 1012);
+    ASSERT_EQ(rt.idTable().at(4, 0).getInt(), 16);
+    ASSERT_EQ(rt.idTable().at(4, 1).getInt(), 1016);
+    ASSERT_EQ(rt.idTable().at(4, 2).getInt(), 1016);
+
+    // if this would not be for learning, but a real test, the following cases
+    // should be checked as well:
+    // test one/two empty subtree(s)
+    // test join with no matches
+    // test join with keepJoinColumn false and true
+    // test join with many other columns
+    // test join with join column in the beginning, middle and end
 }
