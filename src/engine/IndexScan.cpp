@@ -132,9 +132,16 @@ ResultTable IndexScan::computeResult() {
   AD_CORRECTNESS_CHECK(idTable.numColumns() == numVariables_);
   LOG(DEBUG) << "IndexScan result computation done.\n";
 
-  LOG(INFO) << idTable[0][0] << std::endl;
-  LOG(INFO) << idTable[1][0] << std::endl;
-  LOG(INFO) << idTable[2][0] << std::endl;
+  LOG(INFO) << "Scan Result computation: " << std::endl;
+  LOG(INFO) << "TC subject: " << subject_ << " TC predicate: "
+            << predicate_ << " TC object: " << object_ << std::endl;
+  LOG(INFO) << "Permuted Triple: " << *permutedTriple[0] << " "
+            << *permutedTriple[1] << " " << *permutedTriple[2] << std::endl;
+  if (idTable.numRows() > 0) {
+    LOG(INFO) << idTable[0][0] << std::endl;
+    LOG(INFO) << idTable[1][0] << std::endl;
+    LOG(INFO) << idTable[2][0] << std::endl;
+  }
 
   return {std::move(idTable), resultSortedOn(), LocalVocab{}};
 }

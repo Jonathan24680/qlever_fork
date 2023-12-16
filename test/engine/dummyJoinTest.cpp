@@ -7,6 +7,10 @@
 #include "index/Index.h"
 #include "parser/data/Variable.h"
 #include "engine/QueryExecutionTree.h"
+#include "./../test/IndexTestHelpers.h"
+#include <fstream>
+#include "engine/IndexScan.h"
+#include "engine/Join.h"
 
 TEST(dummyJoin, firstTest) {
     dummyJoin dj = dummyJoin();
@@ -112,4 +116,43 @@ TEST(dummyJoin, twoChildren) {
     // test join with keepJoinColumn false and true
     // test join with many other columns
     // test join with join column in the beginning, middle and end
+}
+
+
+// ========================== Test to build an index ===========================
+TEST(dummyJoin, realIndex) {
+    std::ifstream ttlfile("/home/jonathan/Desktop/qlever/qlever-indices/"
+                            "osm_liechtenstein/testIndexPrefixes2.ttl");
+    std::stringstream buffer;
+    buffer << ttlfile.rdbuf();
+    // std::cerr << buffer.str() << std::endl;
+    QueryExecutionContext* qec = ad_utility::testing::getQec(buffer.str());
+    std::cout << "Num Triples of the index: "
+                << qec->getIndex().numTriples().normal_ << std::endl;
+    // dummy query for the testing of the new join method
+    Variable a{"?a"};
+    /*std::shared_ptr<QueryExecutionTree> test =
+        ad_utility::makeExecutionTree<IndexScan>(qec,
+        Permutation::Enum::POS, SparqlTriple{a,
+            PropertyPath::fromVariable(Variable{"b"}), Variable{"c"}});
+    /*std::shared_ptr<QueryExecutionTree> a1 = 
+        ad_utility::makeExecutionTree<IndexScan>(qec,
+        Permutation::Enum::POS, SparqlTriple{a, "osmkey:highway", "bus_stop"});
+    std::shared_ptr<QueryExecutionTree> a2 =
+        ad_utility::makeExecutionTree<IndexScan>(qec,
+        Permutation::Enum::POS, SparqlTriple{a, "osmkey:name",
+        Variable{"?name"}});*/
+    //std::shared_ptr<const ResultTable> restest = test->getResult();
+    //std::cout << "restest " << restest->size() << std::endl;
+    /*std::cout << a1->getVariableAndInfoByColumnIndex(0).first._name <<std::endl;
+    std::cout << a2->getVariableAndInfoByColumnIndex(1).first._name <<std::endl;
+    Join join1{qec, a1, a2, 0, 1, true};
+    ASSERT_EQ(join1.getDescriptor(), "Join on ?a");
+    std::shared_ptr<const ResultTable> res1 = join1.getResult();
+    std::cout << "Res1 size: " << res1->size() << std::endl;
+    std::cout << res1->asDebugString() << std::endl;*/
+    // load first bus_stop
+    // load second bus_stop
+    // distance merge
+    ASSERT_EQ(1, 2);
 }

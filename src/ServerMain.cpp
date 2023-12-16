@@ -18,6 +18,8 @@
 #include "util/MemorySize/MemorySize.h"
 #include "util/MemorySize/MemorySizeParser.h"
 
+#include "./../test/engine/testOfStuff.cpp"
+
 using std::size_t;
 using std::string;
 
@@ -28,6 +30,7 @@ namespace po = boost::program_options;
 
 // Main function.
 int main(int argc, char** argv) {
+  test_stuff();
   setlocale(LC_CTYPE, "");
 
   std::locale loc;

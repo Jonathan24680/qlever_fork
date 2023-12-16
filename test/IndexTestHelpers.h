@@ -81,7 +81,7 @@ inline Index makeTestIndex(
         "\"zz\"@en";
   }
 
-  FILE_BUFFER_SIZE() = 1000;
+  FILE_BUFFER_SIZE() = 100000;
   std::fstream f(inputFilename, std::ios_base::out);
   f << turtleInput.value();
   f.close();
