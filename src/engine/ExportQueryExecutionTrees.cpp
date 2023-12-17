@@ -201,7 +201,6 @@ ExportQueryExecutionTrees::idToStringAndType(const Index& index, Id id,
       // values, we can use `index.getVocab().indexToOptionalString()` directly.
       std::optional<string> entity =
           index.idToOptionalString(id.getVocabIndex());
-      LOG(INFO) << id.getVocabIndex() << " " << entity.value_or("dummy") << std::endl;
       AD_CONTRACT_CHECK(entity.has_value());
       if constexpr (onlyReturnLiterals) {
         if (!entity.value().starts_with('"')) {

@@ -10,6 +10,20 @@
 #include <fstream>
 #include "engine/IndexScan.h"
 #include "engine/Join.h"
+#include "engine/ExportQueryExecutionTrees.h"
+
+
+void print_table(QueryExecutionContext* qec,
+                  const std::shared_ptr<const ResultTable> table) {
+  for (size_t i = 0; i < table->size(); i++) {
+    for (size_t k = 0; k < table->width(); k++) {
+      auto test = ExportQueryExecutionTrees::idToStringAndType(qec->getIndex(),
+            table->idTable().at(i, k), {});
+      std::cout << test.value().first << " ";
+    }
+    std::cout << std::endl;
+  }
+}
 
 
 void test_stuff() {
@@ -49,6 +63,7 @@ void test_stuff() {
     Join join{qec, scan1, scan2, 0, 1, true};
     std::shared_ptr<const ResultTable> restest = join.getResult();
     std::cout << "restest " << restest->size() << std::endl;
+    print_table(qec, restest);
     /*std::cout << a1->getVariableAndInfoByColumnIndex(0).first._name <<std::endl;
     std::cout << a2->getVariableAndInfoByColumnIndex(1).first._name <<std::endl;
     Join join1{qec, a1, a2, 0, 1, true};
