@@ -9,10 +9,16 @@ class dummyJoin : public Operation {
       std::shared_ptr<QueryExecutionTree> t1,
       std::shared_ptr<QueryExecutionTree> t2,
       ColumnIndex t1JoinCol, ColumnIndex t2JoinCol,
+      bool keepJoinColumn);
+    dummyJoin(QueryExecutionContext* qec,
+      std::shared_ptr<QueryExecutionTree> t1,
+      std::shared_ptr<QueryExecutionTree> t2,
+      ColumnIndex t1JoinCol, ColumnIndex t2JoinCol,
       bool keepJoinColumn, IdTable leftChildTable,
       std::vector<std::optional<Variable>> variablesLeft,
       IdTable rightChildTable,
       std::vector<std::optional<Variable>> variablesRight);
+    shared_ptr<const ResultTable> geoJoinTest();
     virtual std::vector<QueryExecutionTree*> getChildren();
     // eindeutiger String für die Objekte der Klasse:
     virtual string asStringImpl(size_t indent = 0) const; 

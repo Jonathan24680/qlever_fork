@@ -33,6 +33,20 @@ dummyJoin::dummyJoin(QueryExecutionContext* qec,
     _verbose_init = true;
 }
 
+dummyJoin::dummyJoin(QueryExecutionContext* qec,
+            std::shared_ptr<QueryExecutionTree> t1,
+            std::shared_ptr<QueryExecutionTree> t2,
+            ColumnIndex t1JoinCol, ColumnIndex t2JoinCol,
+            bool keepJoinColumn)
+        : Operation(qec),
+        _left(t1),
+        _right(t2),
+        _leftJoinCol(t1JoinCol),
+        _rightJoinCol(t2JoinCol),
+        _keepJoinColumn(keepJoinColumn) {
+    
+}
+
 std::vector<QueryExecutionTree*> dummyJoin::getChildren() {
 
 }
@@ -159,6 +173,13 @@ ResultTable dummyJoin::computeResult() { // muss angepasst werden
         std::vector<ColumnIndex> sortedBy = {0};
         return ResultTable(std::move(idtable), {}, std::move(lv));
     }
+}
+
+shared_ptr<const ResultTable> dummyJoin::geoJoinTest() {
+  std::shared_ptr<ResultTable> res = std::make_shared<ResultTable>(
+    ResultTable(IdTable(1, _allocator),
+          std::vector<ColumnIndex>{}, LocalVocab{}));
+  return res;
 }
 
 VariableToColumnMap dummyJoin::computeVariableToColumnMap() const {
