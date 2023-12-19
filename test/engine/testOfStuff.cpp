@@ -11,6 +11,7 @@
 #include "engine/IndexScan.h"
 #include "engine/Join.h"
 #include "engine/ExportQueryExecutionTrees.h"
+#include "util/GeoSparqlHelpers.h"
 
 
 void print_table(QueryExecutionContext* qec,
@@ -26,10 +27,81 @@ void print_table(QueryExecutionContext* qec,
 }
 
 
-shared_ptr<const ResultTable> geoJoinTest(dummyJoin* dj) {
+shared_ptr<const ResultTable> geoJoinDistanceTest(dummyJoin* dj) {
+  const IdTable* res_left = &dj->_left->getResult()->idTable();
+  const IdTable* res_right = &dj->_right->getResult()->idTable();
+  size_t numColumns = res_left->numColumns() + res_right->numColumns() - 1;
+  // IdTable result{dj->getResultWidth(), dj->_allocator};
+  IdTable result{numColumns, dj->_allocator};
+
+  /* this lambda function copies elements from copyFrom
+  * into the table res. It copies them into the row
+  * row_ind_res and column column col_ind_res. If the column
+  * is equal to the joinCol, the column is not copied, but
+  * skipped
+  */
+  auto addColumns = [](IdTable* res,
+                      const IdTable* copyFrom,
+                      size_t row_ind_res,
+                      size_t col_ind_res,
+                      size_t row_ind_copy,
+                      size_t joinCol) {
+      size_t col = 0;
+      while (col < copyFrom->numColumns()) {
+          if (col != joinCol) {
+              res->at(row_ind_res, col_ind_res) = 
+                  (*copyFrom).at(row_ind_copy, col);
+              col_ind_res += 1;
+          }
+          col += 1;
+      }
+      return col_ind_res;
+  };
+
+  /* returns everything between the first two quotes. If the string does not
+  * contain two quotes, the string is returned as a whole
+  */
+  auto betweenQuotes = [] (std::string extractFrom) {
+    size_t pos1 = extractFrom.find("\"", 0);
+    size_t pos2 = extractFrom.find("\"", pos1 + 1);
+    if (pos1 != std::string::npos && pos2 != std::string::npos) {
+      return extractFrom.substr(pos1 + 1, pos2-pos1-1);
+    } else {
+      return extractFrom;
+    }
+  };
+
+  // cartesian product with the distance between the two objects
+  size_t resrow = 0;
+  for (size_t rowLeft = 0; rowLeft < res_left->size(); rowLeft++) {
+    for (size_t rowRight = 0; rowRight < res_right->size(); rowRight++) {
+      size_t rescol = 0;
+      result.emplace_back();
+      // distance calculation
+      std::string point1 = ExportQueryExecutionTrees::idToStringAndType(
+              dj->getExecutionContext()->getIndex(),
+              res_left->at(rowLeft, rescol), {}).value().first;
+      std::string point2 = ExportQueryExecutionTrees::idToStringAndType(
+              dj->getExecutionContext()->getIndex(),
+              res_right->at(rowRight, rescol), {}).value().first;
+      point1 = betweenQuotes(point1);
+      point2 = betweenQuotes(point2);
+      double dist = ad_utility::detail::wktDistImpl(point1, point2);
+      result.at(resrow, rescol) = ValueId::makeFromDouble(dist);
+      rescol += 1;
+      // add other columns to result table
+      rescol = addColumns(&result, res_left, resrow, rescol,
+                          rowLeft, dj->_leftJoinCol);
+      rescol = addColumns(&result, res_right, resrow, rescol,
+                          rowRight, dj->_rightJoinCol);
+      resrow += 1;
+    }
+  }
+  
   std::shared_ptr<ResultTable> res = std::make_shared<ResultTable>(
-    ResultTable(IdTable(1, dj->_allocator),
+    ResultTable(std::move(result),
           std::vector<ColumnIndex>{}, LocalVocab{}));
+  print_table(dj->getExecutionContext(), res);
   return res;
 }
 
@@ -118,7 +190,7 @@ void wkt_join_test() {
 
   // distance merge
   dummyJoin dj{qec, join3, join2_3, 0, 0, true};
-  shared_ptr<const ResultTable> res = geoJoinTest(&dj);
+  shared_ptr<const ResultTable> res = geoJoinDistanceTest(&dj);
 }
 
 
