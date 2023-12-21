@@ -38,8 +38,6 @@ std::pair<double, double> parseWktPoint(const std::string_view point) {
   if (auto match = ctre::search<wktPointRegex>(point)) {
     std::string_view lng_sv = match.get<1>();
     std::string_view lat_sv = match.get<2>();
-    std::cout << lng_sv << "  ==  " << lat_sv << std::endl;
-    std::cout << match << std::endl;
     absl::from_chars(lng_sv.data(), lng_sv.data() + lng_sv.size(), lng);
     absl::from_chars(lat_sv.data(), lat_sv.data() + lat_sv.size(), lat);
     // This should never happen: if the regex matches, then each of the two

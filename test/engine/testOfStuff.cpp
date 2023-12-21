@@ -27,7 +27,12 @@ void print_table(QueryExecutionContext* qec,
 }
 
 
-shared_ptr<const ResultTable> geoJoinDistanceTest(dummyJoin* dj) {
+/* computes a join, which joins the two tables and writes the distance between
+the two objects in the join column. If max distance is bigger than 0, then only
+entries, which are closer than the max Distance are in the table
+*/
+shared_ptr<const ResultTable> geoJoinDistanceTest(dummyJoin* dj,
+                                                  double maxDistance = 0) {
   const IdTable* res_left = &dj->_left->getResult()->idTable();
   const IdTable* res_right = &dj->_right->getResult()->idTable();
   size_t numColumns = res_left->numColumns() + res_right->numColumns() - 1;
@@ -76,25 +81,27 @@ shared_ptr<const ResultTable> geoJoinDistanceTest(dummyJoin* dj) {
   for (size_t rowLeft = 0; rowLeft < res_left->size(); rowLeft++) {
     for (size_t rowRight = 0; rowRight < res_right->size(); rowRight++) {
       size_t rescol = 0;
-      result.emplace_back();
-      // distance calculation
       std::string point1 = ExportQueryExecutionTrees::idToStringAndType(
               dj->getExecutionContext()->getIndex(),
-              res_left->at(rowLeft, rescol), {}).value().first;
+              res_left->at(rowLeft, dj->_leftJoinCol), {}).value().first;
       std::string point2 = ExportQueryExecutionTrees::idToStringAndType(
               dj->getExecutionContext()->getIndex(),
-              res_right->at(rowRight, rescol), {}).value().first;
+              res_right->at(rowRight, dj->_rightJoinCol), {}).value().first;
       point1 = betweenQuotes(point1);
       point2 = betweenQuotes(point2);
       double dist = ad_utility::detail::wktDistImpl(point1, point2);
-      result.at(resrow, rescol) = ValueId::makeFromDouble(dist);
-      rescol += 1;
-      // add other columns to result table
-      rescol = addColumns(&result, res_left, resrow, rescol,
-                          rowLeft, dj->_leftJoinCol);
-      rescol = addColumns(&result, res_right, resrow, rescol,
-                          rowRight, dj->_rightJoinCol);
-      resrow += 1;
+      if (maxDistance == 0 || dist < maxDistance) {
+        result.emplace_back();
+        // distance calculation
+        result.at(resrow, rescol) = ValueId::makeFromDouble(dist);
+        rescol += 1;
+        // add other columns to result table
+        rescol = addColumns(&result, res_left, resrow, rescol,
+                            rowLeft, dj->_leftJoinCol);
+        rescol = addColumns(&result, res_right, resrow, rescol,
+                            rowRight, dj->_rightJoinCol);
+        resrow += 1;
+      }
     }
   }
   
@@ -132,6 +139,8 @@ void wkt_join_test() {
       Permutation::Enum::POS, SparqlTriple{a,
       "<https://www.openstreetmap.org/wiki/Key:name>",
       Variable{"?name"}});
+      //TripleComponent::Literal{
+      //          RdfEscaping::normalizeRDFLiteral("\"Schibenertor\"")}});
   std::shared_ptr<QueryExecutionTree> scan3 =
       ad_utility::makeExecutionTree<IndexScan>(qec,
       Permutation::Enum::POS, SparqlTriple{a,
@@ -190,7 +199,7 @@ void wkt_join_test() {
 
   // distance merge
   dummyJoin dj{qec, join3, join2_3, 0, 0, true};
-  shared_ptr<const ResultTable> res = geoJoinDistanceTest(&dj);
+  shared_ptr<const ResultTable> res = geoJoinDistanceTest(&dj, 0.5);
 }
 
 
