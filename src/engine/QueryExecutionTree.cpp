@@ -35,6 +35,7 @@
 #include "engine/Values.h"
 #include "engine/ValuesForTesting.h"
 #include "parser/RdfEscaping.h"
+#include "dummyJoin.h"
 
 using std::string;
 
@@ -223,7 +224,9 @@ void QueryExecutionTree::setOperation(std::shared_ptr<Op> operation) {
     _type = DUMMY;
   } else if constexpr (std::is_same_v<Op, CartesianProductJoin>) {
     _type = CARTESIAN_PRODUCT_JOIN;
-  } else {
+  } else if constexpr (std::is_same_v<Op, dummyJoin>) {
+    _type = SPATIAL_JOIN;
+  }else {
     static_assert(ad_utility::alwaysFalse<Op>,
                   "New type of operation that was not yet registered");
   }
@@ -260,6 +263,8 @@ template void QueryExecutionTree::setOperation(
     std::shared_ptr<ValuesForTestingNoKnownEmptyResult>);
 template void QueryExecutionTree::setOperation(
     std::shared_ptr<CartesianProductJoin>);
+template void QueryExecutionTree::setOperation(std::shared_ptr<dummyJoin>);
+
 
 // ________________________________________________________________________________________________________________
 std::shared_ptr<QueryExecutionTree> QueryExecutionTree::createSortedTree(

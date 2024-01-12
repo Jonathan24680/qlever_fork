@@ -1,10 +1,12 @@
 #pragma once
 
 #include "Operation.h"
+#include "parser/ParsedQuery.h"
 
 class dummyJoin : public Operation {
   public:
-    dummyJoin() {};
+    dummyJoin();
+    dummyJoin(QueryExecutionContext* qec, SparqlTriple triple);
     dummyJoin(QueryExecutionContext* qec,
       std::shared_ptr<QueryExecutionTree> t1,
       std::shared_ptr<QueryExecutionTree> t2,
@@ -31,6 +33,7 @@ class dummyJoin : public Operation {
     [[nodiscard]] virtual vector<ColumnIndex> resultSortedOn() const;
     virtual ResultTable computeResult();
     virtual VariableToColumnMap computeVariableToColumnMap() const;
+    void addChild(std::shared_ptr<QueryExecutionTree> child);
   // don't make them private for testing purposes
   // private:
     std::shared_ptr<QueryExecutionTree> _left;
@@ -44,4 +47,8 @@ class dummyJoin : public Operation {
     ad_utility::MemorySize _limit = ad_utility::MemorySize::bytes(100000);
     ad_utility::AllocatorWithLimit<ValueId> _allocator =
             ad_utility::makeAllocatorWithLimit<ValueId>(_limit);
+    std::optional<Variable> leftChildVariable = std::nullopt;
+    std::optional<Variable> rightChildVariable = std::nullopt;
+    std::shared_ptr<QueryExecutionTree> child1 = nullptr;
+    std::shared_ptr<QueryExecutionTree> child2 = nullptr;
 };

@@ -29,6 +29,7 @@
 #include <engine/Values.h>
 #include <parser/Alias.h>
 #include <parser/SparqlParserHelpers.h>
+#include <engine/dummyJoin.h>
 
 #include <algorithm>
 #include <ctime>
@@ -753,6 +754,13 @@ vector<QueryPlanner::SubtreePlan> QueryPlanner::seedWithScansAndText(
 
     if (node._triple._p._iri == HAS_PREDICATE_PREDICATE) {
       pushPlan(makeSubtreePlan<HasPredicateScan>(_qec, node._triple));
+      continue;
+    }
+
+    if (node._triple._p._iri.find("Near") != std::string::npos ) {
+      // pushPlan();
+      LOG(INFO) << "Spatial Join Case: " << node._triple._p._iri << std::endl;
+      pushPlan(makeSubtreePlan<dummyJoin>(_qec, node._triple));
       continue;
     }
 
@@ -2002,6 +2010,14 @@ std::vector<QueryPlanner::SubtreePlan> QueryPlanner::createJoinCandidates(
     candidates.push_back(std::move(opt.value()));
   }
 
+  // if one of the inputs is the spatial join and the other input is a matching
+  // geometry, add the geometry as a child to the spatial join instead of
+  // creating a normal join
+  if (auto opt = createSpatialJoin(a, b, jcs)) {
+    candidates.push_back(std::move(opt.value()));
+    return candidates;
+  }
+
   // "NORMAL" CASE:
   // The join class takes care of sorting the subtrees if necessary
   SubtreePlan plan =
@@ -2010,6 +2026,29 @@ std::vector<QueryPlanner::SubtreePlan> QueryPlanner::createJoinCandidates(
   candidates.push_back(std::move(plan));
 
   return candidates;
+}
+
+// _____________________________________________________________________________
+auto QueryPlanner::createSpatialJoin(
+    SubtreePlan a, SubtreePlan b,
+    const std::vector<std::array<ColumnIndex, 2>>& jcs)
+    -> std::optional<SubtreePlan> {
+  using enum QueryExecutionTree::OperationType;
+  const bool aIsSpatialJoin = a._qet->getType() == SPATIAL_JOIN;
+  const bool bIsSpatialJoin = b._qet->getType() == SPATIAL_JOIN;
+  
+  if (!(aIsSpatialJoin || bIsSpatialJoin)) {
+    return std::nullopt;
+  }
+
+  // todo: add child to dummyJoin
+  // todo: merge subtreeplanIds
+  // todo: make subtreeplan
+  // todo: return plan
+
+  // write the chapter for the master thesis about integration in the query planner
+  // already, as i will have forgotten most of that by the usual writing time
+  todos hier weitermachen
 }
 
 // __________________________________________________________________________________________________________________

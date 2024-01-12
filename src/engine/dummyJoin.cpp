@@ -3,6 +3,7 @@
 #include "util/MemorySize/MemorySize.h"
 #include "global/ValueId.h"
 #include "ValuesForTesting.h"
+#include "parser/ParsedQuery.h"
 
 // soll eine Klasse sein, welche aus dem nichts ein Ergebnis erzeugt
 
@@ -31,6 +32,7 @@ dummyJoin::dummyJoin(QueryExecutionContext* qec,
     _variablesLeft = std::move(variablesLeft);
     _variablesRight = std::move(variablesRight);
     _verbose_init = true;
+    std::cout << "test in constructor" << std::endl;
 }
 
 dummyJoin::dummyJoin(QueryExecutionContext* qec,
@@ -44,6 +46,26 @@ dummyJoin::dummyJoin(QueryExecutionContext* qec,
         _leftJoinCol(t1JoinCol),
         _rightJoinCol(t2JoinCol),
         _keepJoinColumn(keepJoinColumn) {
+    std::cout << "another test in constructor" << std::endl;
+}
+
+dummyJoin::dummyJoin() {
+    std::cout << "yet another test in constructor" << std::endl;
+}
+
+dummyJoin::dummyJoin(QueryExecutionContext* qec, SparqlTriple triple) {
+    std::cout << "so many tests in constructor" << std::endl;
+    std::cout << triple._s << " " << triple._p << " " << triple._o
+                << " " << std::endl;
+    if (triple._s.isVariable() && triple._o.isVariable()) {
+        leftChildVariable = triple._s.getVariable();
+        rightChildVariable = triple._o.getVariable();
+    } else {
+        AD_THROW("SpatialJoin needs two variables");
+    }
+}
+
+void dummyJoin::addChild(std::shared_ptr<QueryExecutionTree> child) {
     
 }
 
