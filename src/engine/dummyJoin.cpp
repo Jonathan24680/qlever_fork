@@ -70,12 +70,8 @@ void dummyJoin::addChild(std::shared_ptr<QueryExecutionTree> child,
                             Variable varOfChild) {
     if (varOfChild == leftChildVariable) {
         childLeft = child;
-        std::cout << "left child added " << std::endl;
-        std::cout << child->asString() << std::endl;
     } else if (varOfChild == rightChildVariable) {
         childRight = child;
-        std::cout << "right child added " << std::endl;
-        std::cout << child->asString() << std::endl;
     } else {
         LOG(INFO) << varOfChild._name << std::endl;
         AD_THROW("variable does not match");
@@ -92,8 +88,13 @@ std::vector<QueryExecutionTree*> dummyJoin::getChildren() {
 
 
 string dummyJoin::asStringImpl(size_t indent) const {
-    std::string dummy = "StringImpl of dummyJoin";
-    return dummy;
+    std::ostringstream os;
+    for (size_t i = 0; i < indent; i++) {
+        os << " ";
+    }
+    os << "dummyJoin\nChild1:\n" << childLeft->asString(indent) << "\n";
+    os << "Child2:\n" << childRight->asString(indent) << "\n";
+    return std::move(os).str();
 }
 
 string dummyJoin::getDescriptor() const {
