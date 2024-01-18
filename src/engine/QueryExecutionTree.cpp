@@ -76,6 +76,7 @@ string QueryExecutionTree::asString(size_t indent) {
 void QueryExecutionTree::setOperation(QueryExecutionTree::OperationType type,
                                       std::shared_ptr<Operation> op) {
   _type = type;
+  LOG(INFO) << "set Type " << type << std::endl;
   _rootOperation = std::move(op);
   _asString = "";
   _sizeEstimate = std::numeric_limits<size_t>::max();
@@ -225,6 +226,7 @@ void QueryExecutionTree::setOperation(std::shared_ptr<Op> operation) {
   } else if constexpr (std::is_same_v<Op, CartesianProductJoin>) {
     _type = CARTESIAN_PRODUCT_JOIN;
   } else if constexpr (std::is_same_v<Op, dummyJoin>) {
+    LOG(INFO) << "spatial join case set operation" << std::endl;
     _type = SPATIAL_JOIN;
   }else {
     static_assert(ad_utility::alwaysFalse<Op>,

@@ -33,7 +33,8 @@ class dummyJoin : public Operation {
     [[nodiscard]] virtual vector<ColumnIndex> resultSortedOn() const;
     virtual ResultTable computeResult();
     virtual VariableToColumnMap computeVariableToColumnMap() const;
-    void addChild(std::shared_ptr<QueryExecutionTree> child);
+    void addChild(std::shared_ptr<QueryExecutionTree> child,
+                  Variable varOfChild);
   // don't make them private for testing purposes
   // private:
     std::shared_ptr<QueryExecutionTree> _left;
@@ -49,6 +50,6 @@ class dummyJoin : public Operation {
             ad_utility::makeAllocatorWithLimit<ValueId>(_limit);
     std::optional<Variable> leftChildVariable = std::nullopt;
     std::optional<Variable> rightChildVariable = std::nullopt;
-    std::shared_ptr<QueryExecutionTree> child1 = nullptr;
-    std::shared_ptr<QueryExecutionTree> child2 = nullptr;
+    std::shared_ptr<QueryExecutionTree> childLeft = nullptr;
+    std::shared_ptr<QueryExecutionTree> childRight = nullptr;
 };

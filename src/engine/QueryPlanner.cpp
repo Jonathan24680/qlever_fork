@@ -2038,8 +2038,27 @@ auto QueryPlanner::createSpatialJoin(
   const bool bIsSpatialJoin = b._qet->getType() == SPATIAL_JOIN;
   
   if (!(aIsSpatialJoin || bIsSpatialJoin)) {
+    std::cout << a._qet->getType() << " " << b._qet->getType()
+    << " Undefined: " << UNDEFINED << "SCAN: " << SCAN << "Join: " << JOIN
+    << std::endl;
     return std::nullopt;
   }
+
+  LOG(INFO) << "I'm here----------------------------------------" << std::endl;
+
+  SubtreePlan spatialSubtreePlan = aIsSpatialJoin ? a : b;
+  SubtreePlan otherSubtreePlan = aIsSpatialJoin ? b : a;
+
+  std::shared_ptr<Operation> op = spatialSubtreePlan._qet->getRootOperation();
+  dummyJoin* spatialJoin = dynamic_cast<dummyJoin*>(op.get());
+
+  ColumnIndex ind = aIsSpatialJoin ? jcs[0][1] : jcs[0][0];
+  Variable var = otherSubtreePlan._qet->
+                      getVariableAndInfoByColumnIndex(ind).first;
+
+  spatialJoin->addChild(otherSubtreePlan._qet, var);
+
+
 
   // todo: add child to dummyJoin
   // todo: merge subtreeplanIds
@@ -2048,7 +2067,7 @@ auto QueryPlanner::createSpatialJoin(
 
   // write the chapter for the master thesis about integration in the query planner
   // already, as i will have forgotten most of that by the usual writing time
-  todos hier weitermachen
+  // todos hier weitermachen
 }
 
 // __________________________________________________________________________________________________________________

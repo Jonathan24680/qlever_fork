@@ -4,6 +4,7 @@
 #include "global/ValueId.h"
 #include "ValuesForTesting.h"
 #include "parser/ParsedQuery.h"
+#include "VariableToColumnMap.h"
 
 // soll eine Klasse sein, welche aus dem nichts ein Ergebnis erzeugt
 
@@ -65,22 +66,38 @@ dummyJoin::dummyJoin(QueryExecutionContext* qec, SparqlTriple triple) {
     }
 }
 
-void dummyJoin::addChild(std::shared_ptr<QueryExecutionTree> child) {
-    
+void dummyJoin::addChild(std::shared_ptr<QueryExecutionTree> child,
+                            Variable varOfChild) {
+    if (varOfChild == leftChildVariable) {
+        childLeft = child;
+        std::cout << "left child added " << std::endl;
+        std::cout << child->asString() << std::endl;
+    } else if (varOfChild == rightChildVariable) {
+        childRight = child;
+        std::cout << "right child added " << std::endl;
+        std::cout << child->asString() << std::endl;
+    } else {
+        LOG(INFO) << varOfChild._name << std::endl;
+        AD_THROW("variable does not match");
+    }
 }
 
 std::vector<QueryExecutionTree*> dummyJoin::getChildren() {
+    if (!(childLeft || childRight)) {
+        AD_THROW("SpatialJoin needs two variables");
+    }
 
+    return std::vector<QueryExecutionTree*>();
 }
 
 
 string dummyJoin::asStringImpl(size_t indent) const {
-    std::string dummy = "Hallo";
+    std::string dummy = "StringImpl of dummyJoin";
     return dummy;
 }
 
 string dummyJoin::getDescriptor() const {
-    std::string dummy = "Hallo";
+    std::string dummy = "Descriptor of dummyJoin";
     return dummy;
 }
 
@@ -206,5 +223,12 @@ shared_ptr<const ResultTable> dummyJoin::geoJoinTest() {
 
 VariableToColumnMap dummyJoin::computeVariableToColumnMap() const {
     // welche Variable kommt zu welcher Spalte
-    return {};
+    std::cout << "varColMap dummyJoin " << std::endl;
+    VariableToColumnMap variableToColumnMap;
+    auto makeCol = makePossiblyUndefinedColumn;
+    
+    variableToColumnMap[leftChildVariable.value()] = makeCol(ColumnIndex{0});
+    variableToColumnMap[rightChildVariable.value()] = makeCol(ColumnIndex{1});
+    
+    return variableToColumnMap;
 }
