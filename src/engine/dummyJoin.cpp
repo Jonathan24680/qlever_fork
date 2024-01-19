@@ -18,7 +18,7 @@ dummyJoin::dummyJoin(QueryExecutionContext* qec,
             std::vector<std::optional<Variable>> variablesLeft,
             IdTable rightChildTable,
             std::vector<std::optional<Variable>> variablesRight)
-        : Operation(qec) {
+          : Operation(qec){
     /* ValuesForTesting operationLeft = ValuesForTesting(qec,
         std::move(leftChildTable), std::move(variablesLeft));
     ValuesForTesting operationRight = ValuesForTesting(qec,
@@ -50,72 +50,113 @@ dummyJoin::dummyJoin(QueryExecutionContext* qec,
     std::cout << "another test in constructor" << std::endl;
 }
 
-dummyJoin::dummyJoin() {
+dummyJoin::dummyJoin() {  // never use as qec of operation is not initialized
     std::cout << "yet another test in constructor" << std::endl;
 }
 
-dummyJoin::dummyJoin(QueryExecutionContext* qec, SparqlTriple triple) {
-    std::cout << "so many tests in constructor" << std::endl;
-    std::cout << triple._s << " " << triple._p << " " << triple._o
-                << " " << std::endl;
-    if (triple._s.isVariable() && triple._o.isVariable()) {
-        leftChildVariable = triple._s.getVariable();
-        rightChildVariable = triple._o.getVariable();
-    } else {
-        AD_THROW("SpatialJoin needs two variables");
-    }
+dummyJoin::dummyJoin(QueryExecutionContext* qec, SparqlTriple triple) // delete this constructor
+      : Operation(qec) {
+  std::cout << "so many tests in constructor" << std::endl;
+  std::cout << triple._s << " " << triple._p << " " << triple._o
+            << " " << std::endl;
+    
+  if (triple._s.isVariable() && triple._o.isVariable()) {
+    leftChildVariable = triple._s.getVariable();
+    rightChildVariable = triple._o.getVariable();
+  } else {
+    AD_THROW("SpatialJoin needs two variables");
+  }
 }
 
-void dummyJoin::addChild(std::shared_ptr<QueryExecutionTree> child,
-                            Variable varOfChild) {
-    if (varOfChild == leftChildVariable) {
-        childLeft = child;
-    } else if (varOfChild == rightChildVariable) {
-        childRight = child;
-    } else {
-        LOG(INFO) << varOfChild._name << std::endl;
-        AD_THROW("variable does not match");
-    }
+dummyJoin::dummyJoin(QueryExecutionContext* qec, SparqlTriple triple,
+  std::optional<std::shared_ptr<QueryExecutionTree>> childLeft,
+  std::optional<std::shared_ptr<QueryExecutionTree>> childRight)
+            : Operation(qec) {
+  this->triple = triple;
+  if (childLeft) {
+    this->childLeft = childLeft.value();
+  }
+  if (childRight) {
+    this->childRight = childRight.value();
+  }
+  
+  if (triple._s.isVariable() && triple._o.isVariable()) {
+    leftChildVariable = triple._s.getVariable();
+    rightChildVariable = triple._o.getVariable();
+  } else {
+    AD_THROW("SpatialJoin needs two variables");
+  }
+}
+
+std::shared_ptr<dummyJoin> dummyJoin::addChild(
+      std::shared_ptr<QueryExecutionTree> child, Variable varOfChild){
+  if (varOfChild == leftChildVariable) {
+    childLeft = child;
+    return std::make_shared<dummyJoin>(getExecutionContext(), triple.value(),
+          childLeft, childRight);
+  } else if (varOfChild == rightChildVariable) {
+    childRight = child;
+    return std::make_shared<dummyJoin>(getExecutionContext(), triple.value(),
+          childLeft, childRight);
+  } else {
+    LOG(INFO) << "variable does not match" << varOfChild._name << std::endl;
+    AD_THROW("variable does not match");
+  }
+}
+
+bool dummyJoin::isConstructed() {
+  // if the spatialJoin has both children its construction is done. Then true
+  // is returned. This is needed in the QueryPlanner, so that the QueryPlanner
+  // stops trying to add children, after it is already constructed
+  if (childLeft && childRight) {
+    return true;
+  }
+  return false;
 }
 
 std::vector<QueryExecutionTree*> dummyJoin::getChildren() {
-    if (!(childLeft || childRight)) {
-        AD_THROW("SpatialJoin needs two variables");
-    }
+  if (!(childLeft || childRight)) {
+      AD_THROW("SpatialJoin needs two variables");
+  }
 
-    return std::vector<QueryExecutionTree*>();
+  return {childLeft.get(), childRight.get()};
 }
 
 
 string dummyJoin::asStringImpl(size_t indent) const {
-    std::ostringstream os;
-    for (size_t i = 0; i < indent; i++) {
-        os << " ";
-    }
-    os << "dummyJoin\nChild1:\n" << childLeft->asString(indent) << "\n";
-    os << "Child2:\n" << childRight->asString(indent) << "\n";
-    return std::move(os).str();
+  std::ostringstream os;
+  for (size_t i = 0; i < indent; i++) {
+    os << " ";
+  }
+  os << "dummyJoin\nChild1:\n" << childLeft->asString(indent) << "\n";
+  os << "Child2:\n" << childRight->asString(indent) << "\n";
+  return std::move(os).str();
 }
 
 string dummyJoin::getDescriptor() const {
-    std::string dummy = "Descriptor of dummyJoin";
-    return dummy;
+    return "Descriptor of dummyJoin";
 }
 
-size_t dummyJoin::getResultWidth() const { // muss angepasst werden
-    if (_verbose_init) {
+size_t dummyJoin::getResultWidth() const {
+    if (childLeft && childRight) {
+      // don't subtract anything because of a common join column. In the case
+      // of the spatial join, the join column is different for both sides (e.g.
+      // objects with a distance of at most 500m to each other, then each object
+      // might contain different positions, which should be kept)
+      return childLeft->getResultWidth() + childRight->getResultWidth();
+    } else if (_verbose_init) {
         return _variablesLeft.size() + _variablesRight.size() - 1;
     } else {
-        return 1;
+        return 1;  // dummy return, as the class does not have its children yet
     }
 }
 
 size_t dummyJoin::getCostEstimate() {
-    return 1;
+    return 100000000;
 }
 
 uint64_t dummyJoin::getSizeEstimateBeforeLimit() {
-    return 1;
+    return 100000000;
 }
 
 float dummyJoin::getMultiplicity(size_t col) {
@@ -130,7 +171,7 @@ vector<ColumnIndex> dummyJoin::resultSortedOn() const {
     return {};
 }
 
-ResultTable dummyJoin::computeResult() { // muss angepasst werden
+ResultTable dummyJoin::computeResult() {
     if (_verbose_init) {
         // compute the result based on the two child results
         // this assumes, that the IDtables are already sorted on the join column
@@ -204,10 +245,14 @@ ResultTable dummyJoin::computeResult() { // muss angepasst werden
         // enthält, sodass es mit resultwidth usw. passt
         // return {};
         // die resulttable kann ein leeres localvocab haben
-        IdTable idtable = IdTable(1, _allocator);
+        IdTable idtable = IdTable(0, _allocator);
+        idtable.setNumColumns(getResultWidth());
         for (int i = 0; i < 10; i++) {
-            ValueId toAdd = ValueId::makeFromInt(i);
-            idtable.push_back({toAdd});
+          idtable.emplace_back();
+          for (int k = 0; k < getResultWidth(); k++) {
+            ValueId toAdd = ValueId::makeFromInt(i * 100 + k);
+            idtable[i][k] = toAdd;
+          }
         }
         LocalVocab lv = {}; // let's assume, this has no local vocabs
         std::vector<ColumnIndex> sortedBy = {0};
@@ -223,13 +268,42 @@ shared_ptr<const ResultTable> dummyJoin::geoJoinTest() {
 }
 
 VariableToColumnMap dummyJoin::computeVariableToColumnMap() const {
-    // welche Variable kommt zu welcher Spalte
-    std::cout << "varColMap dummyJoin " << std::endl;
-    VariableToColumnMap variableToColumnMap;
-    auto makeCol = makePossiblyUndefinedColumn;
-    
+  // welche Variable kommt zu welcher Spalte
+  std::cout << "varColMap dummyJoin " << std::endl;
+  VariableToColumnMap variableToColumnMap;
+  auto makeCol = makePossiblyUndefinedColumn;
+  
+  /*Depending on the amount of children the operation returns a different
+  VariableToColumnMap. If the operation doesn't have both children it needs
+  to aggressively push the queryplanner to add the children, because the
+  operation can't exist without them. If it has both children, it can return
+  the variable to column map, which will be present, after the operation has
+  computed its result*/
+  if (!(childLeft || childRight)) {
+    // none of the children has been added
     variableToColumnMap[leftChildVariable.value()] = makeCol(ColumnIndex{0});
     variableToColumnMap[rightChildVariable.value()] = makeCol(ColumnIndex{1});
-    
-    return variableToColumnMap;
+  } else if (childLeft && !childRight) {
+    // only the left child has been added
+    variableToColumnMap[rightChildVariable.value()] = makeCol(ColumnIndex{1});
+  } else if (!childLeft && childRight) {
+    // only the right child has been added
+    variableToColumnMap[leftChildVariable.value()] = makeCol(ColumnIndex{0});
+  } else {
+    // both children have been added to the Operation
+    auto varColsLeftMap = childLeft->getVariableColumns();
+    auto varColsRightMap = childRight->getVariableColumns();
+    auto varColsLeftVec = copySortedByColumnIndex(varColsLeftMap);
+    auto varColsRightVec = copySortedByColumnIndex(varColsRightMap);
+    size_t index = 0;
+    for (size_t i = 0; i < varColsLeftVec.size(); i++) {
+      variableToColumnMap[varColsLeftVec.at(i).first] = makeCol(ColumnIndex{index});
+      index++;
+    }
+    for (size_t i = 0; i < varColsRightVec.size(); i++) {
+      variableToColumnMap[varColsRightVec.at(i).first] = makeCol(ColumnIndex{index});
+      index++;
+    }
+  }
+  return variableToColumnMap;
 }

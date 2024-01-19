@@ -760,7 +760,8 @@ vector<QueryPlanner::SubtreePlan> QueryPlanner::seedWithScansAndText(
     if (node._triple._p._iri.find("Near") != std::string::npos ) {
       // pushPlan();
       LOG(INFO) << "Spatial Join Case: " << node._triple._p._iri << std::endl;
-      pushPlan(makeSubtreePlan<dummyJoin>(_qec, node._triple));
+      pushPlan(makeSubtreePlan<dummyJoin>(_qec, node._triple,
+          std::nullopt, std::nullopt));
       continue;
     }
 
@@ -2037,27 +2038,35 @@ auto QueryPlanner::createSpatialJoin(
   const bool aIsSpatialJoin = a._qet->getType() == SPATIAL_JOIN;
   const bool bIsSpatialJoin = b._qet->getType() == SPATIAL_JOIN;
   
-  if (!(aIsSpatialJoin || bIsSpatialJoin)) {
+  if (!(aIsSpatialJoin || bIsSpatialJoin)
+      || (aIsSpatialJoin && bIsSpatialJoin)) {
     return std::nullopt;
   }
 
-  
   SubtreePlan spatialSubtreePlan = aIsSpatialJoin ? a : b;
   SubtreePlan otherSubtreePlan = aIsSpatialJoin ? b : a;
 
   std::shared_ptr<Operation> op = spatialSubtreePlan._qet->getRootOperation();
-  dummyJoin* spatialJoin = dynamic_cast<dummyJoin*>(op.get());
+  dummyJoin* spatialJoin = static_cast<dummyJoin*>(op.get());
+
+  if (spatialJoin->isConstructed()) {
+    return std::nullopt;
+  }
 
   ColumnIndex ind = aIsSpatialJoin ? jcs[0][1] : jcs[0][0];
   Variable var = otherSubtreePlan._qet->
                       getVariableAndInfoByColumnIndex(ind).first;
 
-  spatialJoin->addChild(otherSubtreePlan._qet, var);
+  auto newSpatialJoin = spatialJoin->addChild(otherSubtreePlan._qet, var);
 
   auto qec = spatialJoin->getExecutionContext();
+  SubtreePlan plan = makeSubtreePlan<dummyJoin>(newSpatialJoin);
+  //SubtreePlan plan = makeSubtreePlan<dummyJoin>(qec,
+    //    newSpatialJoin.triple.value(), newSpatialJoin.childLeft,
+      //  newSpatialJoin.childRight);
   //SubtreePlan plan = makeSubtreePlan(op);
-  mergeSubtreePlanIds(spatialSubtreePlan, a, b);
-  return spatialSubtreePlan;
+  mergeSubtreePlanIds(plan, a, b);
+  return plan;
 
 
   // todo: add child to dummyJoin

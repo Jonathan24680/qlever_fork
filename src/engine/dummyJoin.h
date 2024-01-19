@@ -20,6 +20,9 @@ class dummyJoin : public Operation {
       std::vector<std::optional<Variable>> variablesLeft,
       IdTable rightChildTable,
       std::vector<std::optional<Variable>> variablesRight);
+    dummyJoin(QueryExecutionContext* qec, SparqlTriple triple,
+        std::optional<std::shared_ptr<QueryExecutionTree>> childLeft_,
+        std::optional<std::shared_ptr<QueryExecutionTree>> childRight_);
     shared_ptr<const ResultTable> geoJoinTest();
     virtual std::vector<QueryExecutionTree*> getChildren();
     // eindeutiger String für die Objekte der Klasse:
@@ -33,8 +36,9 @@ class dummyJoin : public Operation {
     [[nodiscard]] virtual vector<ColumnIndex> resultSortedOn() const;
     virtual ResultTable computeResult();
     virtual VariableToColumnMap computeVariableToColumnMap() const;
-    void addChild(std::shared_ptr<QueryExecutionTree> child,
-                  Variable varOfChild);
+    std::shared_ptr<dummyJoin> addChild(
+          std::shared_ptr<QueryExecutionTree> child, Variable varOfChild);
+    bool isConstructed();
   // don't make them private for testing purposes
   // private:
     std::shared_ptr<QueryExecutionTree> _left;
@@ -52,4 +56,5 @@ class dummyJoin : public Operation {
     std::optional<Variable> rightChildVariable = std::nullopt;
     std::shared_ptr<QueryExecutionTree> childLeft = nullptr;
     std::shared_ptr<QueryExecutionTree> childRight = nullptr;
+    std::optional<SparqlTriple> triple = std::nullopt;
 };
