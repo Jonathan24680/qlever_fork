@@ -49,7 +49,7 @@ class dummyJoin : public Operation {
     std::vector<std::optional<Variable>> _variablesLeft;
     std::vector<std::optional<Variable>> _variablesRight;
     bool _verbose_init = false;
-    ad_utility::MemorySize _limit = ad_utility::MemorySize::bytes(100000);
+    ad_utility::MemorySize _limit = ad_utility::MemorySize::bytes(100000000);
     ad_utility::AllocatorWithLimit<ValueId> _allocator =
             ad_utility::makeAllocatorWithLimit<ValueId>(_limit);
     std::optional<Variable> leftChildVariable = std::nullopt;
