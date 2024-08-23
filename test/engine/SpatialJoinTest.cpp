@@ -12,6 +12,12 @@
 #include "engine/SpatialJoin.h"
 #include "parser/data/Variable.h"
 
+// ============ includes for developing ==============
+#include <boost/geometry.hpp>
+#include <boost/geometry/geometries/point.hpp>
+#include <boost/geometry/geometries/box.hpp>
+#include <boost/foreach.hpp>
+
 using namespace ad_utility::testing;
 
 // helper function in debugging for outputting stuff
@@ -1953,5 +1959,61 @@ TEST(SpatialJoin, getSizeEstimate) {
 
 }  // namespace getMultiplicityAndSizeEstimate
 
-// test the compute result method on the large dataset from above
-// TODO
+// ============================================================================
+// start of development, gets moved later, here for convenient compile times
+// ============================================================================
+
+bool current_development() {
+  std::string kg = createSmallDatasetWithPoints();
+  ad_utility::MemorySize blocksizePermutations = 16_MB;
+  auto _executionContext = getQec(kg, true, true, false, blocksizePermutations, false);
+  auto numTriples = _executionContext->getIndex().numTriples().normal;
+  // ===================== build the first child ===============================
+  auto childLeft_ =
+      computeResultTest::buildMediumChild(
+                       _executionContext, "?obj1", std::string{"<name>"}, "?name1", "?obj1",
+                       std::string{"<hasGeometry>"}, "?geo1", "?geo1",
+                       std::string{"<asWKT>"}, "?point1", "?obj1", "?geo1");
+
+  // ======================= build the second child ============================
+  auto childRight_ =
+      computeResultTest::buildMediumChild(
+                       _executionContext, "?obj2", std::string{"<name>"}, "?name2", "?obj2",
+                       std::string{"<hasGeometry>"}, "?geo2", "?geo2",
+                       std::string{"<asWKT>"}, "?point2", "?obj2", "?geo2");
+  
+  // ======================= start of compute result method test ===============
+  std::shared_ptr<const Result> resTableLeft = childLeft_->getResult();
+  std::shared_ptr<const Result> resTableRight = childRight_->getResult();
+  const IdTable* resLeft = &resTableLeft->idTable();
+  const IdTable* resRight = &resTableRight->idTable();
+  // size_t numColumns = getResultWidth();
+  size_t numColumns = childLeft_->getResultWidth() + childRight_->getResultWidth() + 1;
+  IdTable result{numColumns, _executionContext->getAllocator()};
+
+  // create r-tree for smaller result table
+  auto smallerResult = childLeft_;
+  auto otherResult = childRight_;
+  if (resLeft->numRows() > resRight->numRows()) {
+    smallerResult = childRight_;
+    otherResult = childLeft_;
+  }
+
+  namespace bg = boost::geometry;
+  namespace bgi = boost::geometry::index;
+
+  typedef bg::model::point<float, 2, bg::cs::cartesian> point;
+  typedef bg::model::box<point> box;
+  typedef std::pair<box, unsigned> value;
+
+  // test creating an r-tree, the Quickstart uses the quadratic algorithm,
+  // therefore i do it here too, but i need to check, whether another one is
+  // more suited
+  bgi::rtree<value, bgi::quadratic<16>> rtree;
+
+  return true;
+}
+
+TEST(SpatialJoin, currentDevelopment) {
+  ASSERT_TRUE(current_development());
+}
