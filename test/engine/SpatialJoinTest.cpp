@@ -20,6 +20,8 @@
 
 using namespace ad_utility::testing;
 
+// TODO delete helper functions for printing stuff
+
 // helper function in debugging for outputting stuff
 void print_vecs(std::vector<std::vector<std::string>> vec) {
   for (size_t i = 0; i < vec.size(); i++) {
