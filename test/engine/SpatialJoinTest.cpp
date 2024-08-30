@@ -2007,11 +2007,64 @@ bool current_development() {
   typedef bg::model::point<float, 2, bg::cs::cartesian> point;
   typedef bg::model::box<point> box;
   typedef std::pair<box, unsigned> value;
+  // the value, which gets inserted in the points rtree
+  typedef std::pair<point, unsigned int> value_points;
 
   // test creating an r-tree, the Quickstart uses the quadratic algorithm,
   // therefore i do it here too, but i need to check, whether another one is
   // more suited
-  bgi::rtree<value, bgi::quadratic<16>> rtree;
+  bgi::rtree<value, bgi::quadratic<16>> rtree_boxes;
+  bgi::rtree<value_points, bgi::quadratic<16>> rtree_points;
+  bgi::rtree<point, bgi::quadratic<16>> rtree_without_index;
+
+  // create dummy boxes and insert them in the tree
+  for (size_t i = 0; i < 10; i++) {
+    // create a box
+    box b(point(i + 0.0f, i + 0.0f), point(i + 0.5f, i + 0.5f));
+    // insert new value
+    rtree_boxes.insert(std::make_pair(b, i));
+
+    point p(i + 0.25f, i + 0.25f);
+    rtree_points.insert(std::make_pair(p, i));
+    rtree_without_index.insert(p);
+  }
+
+  // insert some special points using different construction techniques
+  point p1(3.0, 1.0);
+  point p2;
+  p2.set<0>(4.0);
+  bg::set<1>(p2, 2.0);
+  rtree_points.insert(std::make_pair(p1, 10));
+  rtree_points.insert(std::make_pair(p2, 11));
+
+  rtree_without_index.insert(p1);
+  rtree_without_index.insert(p2);
+
+  // find values intersecting some area defined by a box
+  box query_box(point(0,0), point(5,5));
+  std::vector<value> results;
+  std::vector<value_points> res_points;
+  std::vector<point> res_without;
+  rtree_boxes.query(bgi::intersects(query_box), std::back_inserter(results));
+  rtree_points.query(bgi::intersects(query_box), std::back_inserter(res_points));
+  rtree_without_index.query(bgi::intersects(query_box), std::back_inserter(res_without));
+
+  // print result:
+  std::cerr << "spatial query box" << std::endl;
+  std::cerr << bg::wkt<box>(query_box) << std::endl;
+  std::cerr << "spatial query result " << std::endl;
+  BOOST_FOREACH(const value& v, results)
+    std::cerr << bg::wkt<box>(v.first) << " - " << v.second << std::endl;
+  std::cerr << "======================================" << std::endl;
+  BOOST_FOREACH(const value_points& p, res_points) {
+    // two ways to get the points
+    std::cerr << bg::get<0>(p.first) << " - " << p.first.get<1>() << " - " << p.second << std::endl;
+  }
+  std::cerr << "======================================" << std::endl;
+  BOOST_FOREACH(const point& p, res_without) {
+    // two ways to get the points
+    std::cerr << bg::get<0>(p) << " - " << p.get<1>() << std::endl;
+  }
 
   return true;
 }
