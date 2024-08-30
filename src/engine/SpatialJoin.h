@@ -83,9 +83,10 @@ class SpatialJoin : public Operation {
     return nameDistanceInternal_;
   }
 
- private:
+ //private:
   void parseMaxDistance();
   std::string betweenQuotes(std::string extractFrom) const;
+  std::string getPoint(const IdTable* restable, size_t row, ColumnIndex col);
   long long computeDist(const IdTable* resLeft, const IdTable* resRight,
                         size_t rowLeft, size_t rowRight,
                         ColumnIndex leftPointCol, ColumnIndex rightPointCol);

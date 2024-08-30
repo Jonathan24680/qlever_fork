@@ -1994,13 +1994,37 @@ bool current_development() {
   IdTable result{numColumns, _executionContext->getAllocator()};
 
   // create r-tree for smaller result table
-  auto smallerResult = childLeft_;
-  auto otherResult = childRight_;
+  auto smallerResult = resLeft;
+  auto otherResult = resRight;
   if (resLeft->numRows() > resRight->numRows()) {
-    smallerResult = childRight_;
-    otherResult = childLeft_;
+    smallerResult = resRight;
+    otherResult = resLeft;
   }
 
+  SpatialJoin spatialjoin(_executionContext, SparqlTriple{TripleComponent{Variable{"?point1"}},
+                                        "<max-distance-in-meters:500000>",
+                                        TripleComponent{Variable{"?point2"}}}, childLeft_, childRight_);
+
+  namespace bg = boost::geometry;
+  namespace bgi = boost::geometry::index;
+
+  typedef bg::model::point<double, 2, bg::cs::cartesian> point;
+  typedef std::pair<point, size_t> value;
+
+  bgi::rtree<value, bgi::quadratic<16>> rtree;
+  for (size_t i = 0; i < smallerResult->numRows(); i++) {
+    // get point of row i
+    std::string pointstr = spatialjoin.getPoint(smallerResult, i, 3);
+    pointstr = spatialjoin.betweenQuotes(pointstr);
+    auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
+    point p(lat1, lng1);
+    // add every point together with the row number into the rtree
+    rtree.insert(std::make_pair(p, i));
+    
+  }
+
+
+  /* this is the general testing of rtrees and a first working version
   namespace bg = boost::geometry;
   namespace bgi = boost::geometry::index;
 
@@ -2065,6 +2089,7 @@ bool current_development() {
     // two ways to get the points
     std::cerr << bg::get<0>(p) << " - " << p.get<1>() << std::endl;
   }
+  */
 
   return true;
 }

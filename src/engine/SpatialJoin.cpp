@@ -241,18 +241,19 @@ std::string SpatialJoin::betweenQuotes(std::string extractFrom) const {
   }
 }
 
+std::string SpatialJoin::getPoint(
+                      const IdTable* restable, size_t row, ColumnIndex col) {
+  return ExportQueryExecutionTrees::idToStringAndType(
+               getExecutionContext()->getIndex(), restable->at(row, col), {})
+        .value()
+        .first;
+}
+
 // ____________________________________________________________________________
 long long SpatialJoin::computeDist(const IdTable* resLeft,
                                    const IdTable* resRight, size_t rowLeft,
                                    size_t rowRight, ColumnIndex leftPointCol,
                                    ColumnIndex rightPointCol) {
-  auto getPoint = [&](const IdTable* restable, size_t row, ColumnIndex col) {
-    return ExportQueryExecutionTrees::idToStringAndType(
-               getExecutionContext()->getIndex(), restable->at(row, col), {})
-        .value()
-        .first;
-  };
-
   std::string point1 = getPoint(resLeft, rowLeft, leftPointCol);
   std::string point2 = getPoint(resRight, rowRight, rightPointCol);
 
