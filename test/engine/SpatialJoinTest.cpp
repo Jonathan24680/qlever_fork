@@ -1961,9 +1961,26 @@ TEST(SpatialJoin, getSizeEstimate) {
 
 }  // namespace getMultiplicityAndSizeEstimate
 
+
+
 // ============================================================================
 // start of development, gets moved later, here for convenient compile times
 // ============================================================================
+
+
+namespace bg = boost::geometry;
+namespace bgi = boost::geometry::index;
+
+typedef bg::model::point<double, 2, bg::cs::cartesian> point;
+typedef bg::model::box<point> box;
+typedef std::pair<point, size_t> value;
+
+// move to the spatialJoin class and use the internal maxDistInMeters
+box computeBoundingBox(long long maxDistInMeters) {
+  return box(point(-180.0f, -90.0f), point(180.0f, 90.0f));
+  theoretisch sollte alles in der bounding box sein, aber der Test schlägt fehl
+}
+
 
 bool current_development() {
   std::string kg = createSmallDatasetWithPoints();
@@ -2005,11 +2022,7 @@ bool current_development() {
                                         "<max-distance-in-meters:500000>",
                                         TripleComponent{Variable{"?point2"}}}, childLeft_, childRight_);
 
-  namespace bg = boost::geometry;
-  namespace bgi = boost::geometry::index;
 
-  typedef bg::model::point<double, 2, bg::cs::cartesian> point;
-  typedef std::pair<point, size_t> value;
 
   bgi::rtree<value, bgi::quadratic<16>> rtree;
   for (size_t i = 0; i < smallerResult->numRows(); i++) {
@@ -2020,7 +2033,7 @@ bool current_development() {
     point p(lat1, lng1);
     // add every point together with the row number into the rtree
     rtree.insert(std::make_pair(p, i));
-    
+    box b = computeBoundingBox(spatialjoin.getMaxDist()); // add this as a private function to spatialJoin
   }
 
 
@@ -2097,3 +2110,38 @@ bool current_development() {
 TEST(SpatialJoin, currentDevelopment) {
   ASSERT_TRUE(current_development());
 }
+
+// =========================================================================
+// ============== real test using current development ======================
+// =========================================================================
+
+namespace boundingBox {
+
+void testBoundingBox(long long maxDistInMeters, point startPoint) {
+  for (int lon = -180; lon < 180; lon++) {
+    for (int lat = -90; lat < 90; lat++) {
+      box boundingBox = computeBoundingBox(maxDistInMeters);
+      bool within = boost::geometry::within(point(lon, lat), boundingBox);
+      std::string point1 = absl::StrCat("POINT(", std::to_string(lon), " ", std::to_string(lat), ")");
+      std::string point2 = absl::StrCat("POINT(", startPoint.get<0>(), " ", startPoint.get<1>(), ")");
+      double dist = ad_utility::detail::wktDistImpl(point1, point2);
+      if (!within) {
+        ASSERT_TRUE(dist > maxDistInMeters);
+      }
+    }
+  }
+}
+
+TEST(SpatialJoin, boundingBox) {
+  double circ = 40.075;  // circumference of the earth (at the equator)
+  for (double lon = -180; lon < 180; lon += 2) {
+    std::cerr << "logging: at lon: " << lon << std::endl;
+    for (double lat = -90; lat < 90; lat += 2) {
+      for (int maxDist = 0; maxDist <= circ / 2.0; maxDist += circ / 360.0) {
+        testBoundingBox(maxDist, point(lat, lon));
+      }
+    }
+  }
+}
+
+}  // namespace boundingBox
