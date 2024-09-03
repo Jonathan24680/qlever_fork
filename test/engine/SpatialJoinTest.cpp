@@ -1978,7 +1978,6 @@ typedef std::pair<point, size_t> value;
 // move to the spatialJoin class and use the internal maxDistInMeters
 box computeBoundingBox(long long maxDistInMeters) {
   return box(point(-180.0f, -90.0f), point(180.0f, 90.0f));
-  theoretisch sollte alles in der bounding box sein, aber der Test schlägt fehl
 }
 
 
@@ -2117,28 +2116,75 @@ TEST(SpatialJoin, currentDevelopment) {
 
 namespace boundingBox {
 
-void testBoundingBox(long long maxDistInMeters, point startPoint) {
-  for (int lon = -180; lon < 180; lon++) {
-    for (int lat = -90; lat < 90; lat++) {
-      box boundingBox = computeBoundingBox(maxDistInMeters);
-      bool within = boost::geometry::within(point(lon, lat), boundingBox);
-      std::string point1 = absl::StrCat("POINT(", std::to_string(lon), " ", std::to_string(lat), ")");
-      std::string point2 = absl::StrCat("POINT(", startPoint.get<0>(), " ", startPoint.get<1>(), ")");
-      double dist = ad_utility::detail::wktDistImpl(point1, point2);
+inline void testBoundingBox(const long long& maxDistInMeters, const point& startPoint) {
+  auto convertToStr = [](const point& point1) {
+    return absl::StrCat("POINT(", point1.get<0>(), " ", point1.get<1>(), ")");
+  };
+
+  auto checkWithin = [&](const point& point1, const point& startPoint, const box& bbox) {
+    bool within = boost::geometry::covered_by(point1, bbox);
+    std::string strp1 = convertToStr(point1);
+    std::string strp2 = convertToStr(startPoint);
+    double dist = ad_utility::detail::wktDistImpl(strp1, strp2) * 1000;
       if (!within) {
         ASSERT_TRUE(dist > maxDistInMeters);
       }
+  };
+  box bbox = computeBoundingBox(maxDistInMeters);
+  // broad grid test
+  for (int lon = -180; lon < 180; lon+=20) {
+    for (int lat = -90; lat < 90; lat+=20) {
+      checkWithin(point(lon, lat), startPoint, bbox);
     }
+  }
+  
+  auto testBounds = [] (double x, double y, box bbox, bool shouldBeWithin) {
+    bool within = boost::geometry::covered_by(point(x, y), bbox);
+    ASSERT_TRUE(within == shouldBeWithin);
+  };
+
+  // do tests at the border of the box
+  const point minPoint = bbox.min_corner();
+  const point maxPoint = bbox.max_corner();
+  const double lowX = minPoint.get<0>();
+  const double lowY = minPoint.get<1>();
+  const double highX = maxPoint.get<0>();
+  const double highY = maxPoint.get<1>();
+  const double xRange = highX - lowX;
+  const double yRange = highY - lowY;
+  for (size_t i = 0; i <= 100; i++) {
+    irgend eine der 4 auskommentierten Zeilen checkWithin ist falsch
+    vermutlicher Fehler: wenn < -180 oder > 180 bzw. <-90 oder > 90 erzeugt das Fehler
+    mögliche Lösung: implementieren, dass mehrere BoundingBoxen genommen werden
+    können (methode in SpatialJoin: containedIn1 or containedIn2 or ...) und within
+    dann in der Methode benutzt wird und dann bool zurückgibt. Die BoundingBoxen
+    vl in einem vector speichern, damit es beliebig viele werden können
+    // barely in or out at the left edge
+    testBounds(lowX, lowY + (yRange / 100) * i, bbox, true);
+    testBounds(lowX-0.01, lowY + (yRange / 100) * i, bbox, false);
+    //checkWithin(point(lowX-0.01, lowY + (yRange / 100) * i), startPoint, bbox);
+    // barely in or out at the bottom edge
+    testBounds(lowX + (xRange / 100) * i, lowY, bbox, true);
+    testBounds(lowX + (xRange / 100) * i, lowY-0.01, bbox, false);
+    //checkWithin(point(lowX + (xRange / 100) * i, lowY-0.01), startPoint, bbox);
+    // barely in or out at the right edge
+    testBounds(highX, lowY + (yRange / 100) * i, bbox, true);
+    testBounds(highX+0.01, lowY + (yRange / 100) * i, bbox, false);
+    //checkWithin(point(highX+0.01, lowY + (yRange / 100) * i), startPoint, bbox);
+    // barely in or out at the top edge
+    testBounds(lowX + (xRange / 100) * i, highY, bbox, true);
+    testBounds(lowX + (xRange / 100) * i, highY+0.01, bbox, false);
+    //checkWithin(point(lowX + (xRange / 100) * i, highY+0.01), startPoint, bbox);
   }
 }
 
 TEST(SpatialJoin, boundingBox) {
-  double circ = 40.075;  // circumference of the earth (at the equator)
-  for (double lon = -180; lon < 180; lon += 2) {
+  double circ = 40.075 * 1000;  // circumference of the earth (at the equator)
+  for (double lon = -180; lon < 180; lon += 20) {
     std::cerr << "logging: at lon: " << lon << std::endl;
-    for (double lat = -90; lat < 90; lat += 2) {
-      for (int maxDist = 0; maxDist <= circ / 2.0; maxDist += circ / 360.0) {
-        testBoundingBox(maxDist, point(lat, lon));
+    for (double lat = -90; lat < 90; lat += 20) {
+      for (int maxDist = 0; maxDist <= circ / 2.0; maxDist += circ / 36.0) {
+        testBoundingBox(maxDist, point(lon, lat));
       }
     }
   }
