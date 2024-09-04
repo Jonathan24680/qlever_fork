@@ -1975,9 +1975,62 @@ typedef bg::model::point<double, 2, bg::cs::cartesian> point;
 typedef bg::model::box<point> box;
 typedef std::pair<point, size_t> value;
 
-// move to the spatialJoin class and use the internal maxDistInMeters
-box computeBoundingBox(long long maxDistInMeters) {
-  return box(point(-180.0f, -90.0f), point(180.0f, 90.0f));
+
+// this function computes the bounding box(es), which represent all points, which
+// are in reach of the starting point with a distance of at most maxDistanceInMeters
+// TOOD: move to the spatialJoin class and use the internal maxDistInMeters. Make
+// the circumference and the radius internal (maybe public for testing) parameters
+std::vector<box> computeBoundingBox(const point& startPoint, const long long& maxDistInMeters) {
+  // circumference in meters at the equator (as the earth is not exactly a
+  // sphere the radius at the equator has been taken)
+  constexpr double circumference = 40075 * 1000;  // * 1000 to convert to meters
+  // radius of the earth in meters (as the earth is not exactly a sphere the
+  // radius at the equator has been taken)
+  constexpr double radius = 6378 * 1000;  // * 1000 to convert to meters
+  // compute latitude bound
+  double upperLatBound = startPoint.get<1>() + maxDistInMeters * (360 / circumference);
+  double lowerLatBound = startPoint.get<1>() - maxDistInMeters * (360 / circumference);
+  bool poleReached = false;
+  // test for "overflows"
+  if (lowerLatBound <= -90) {
+    lowerLatBound = -90;
+    poleReached = true;  // south pole reached
+  }
+  if (upperLatBound >= 90) {
+    upperLatBound = 90;
+    poleReached = true;  // north pole reached
+  }
+  if (poleReached) {
+    return {box(point(-180.0f, lowerLatBound), point(180.0f, upperLatBound))};
+  }
+
+  // compute longitude bound. For an explanation of the calculation and the
+  // naming convention see my master thesis
+  double alpha = maxDistInMeters / radius;
+  double gamma = (90 - startPoint.get<1>()) * (2 * std::numbers::pi / 360);
+  double beta = std::acos((std::cos(gamma) / std::cos(alpha)));
+  double delta = std::acos((std::cos(alpha) - std::cos(gamma) * std::cos(beta))
+                              / (std::sin(gamma) * std::sin(beta)));
+  double lonRange = delta * 360 / (2 * std::numbers::pi);
+  double leftLonBound = startPoint.get<0>() - lonRange;
+  double rightLonBound = startPoint.get<0>() + lonRange;
+  // test for "overflows" and create two bounding boxes if necessary
+  if (leftLonBound < -180) {
+    box box1 = box(point(-180, lowerLatBound),
+                   point(rightLonBound, upperLatBound));
+    box box2 = box(point(leftLonBound + 360, lowerLatBound),
+                   point(180, upperLatBound));
+    return {box1, box2};
+  } else if (rightLonBound > 180) {
+    box box1 = box(point(leftLonBound, lowerLatBound),
+                   point(180, upperLatBound));
+    box box2 = box(point(-180, lowerLatBound),
+                   point(rightLonBound - 360, upperLatBound));
+    return {box1, box2};
+  }
+  // default case, when no bound has an "overflow"
+  return {box(point(leftLonBound, lowerLatBound),
+              point(rightLonBound, upperLatBound))};
 }
 
 
@@ -2026,13 +2079,20 @@ bool current_development() {
   bgi::rtree<value, bgi::quadratic<16>> rtree;
   for (size_t i = 0; i < smallerResult->numRows(); i++) {
     // get point of row i
-    std::string pointstr = spatialjoin.getPoint(smallerResult, i, 3);
+    std::string pointstr = spatialjoin.getPoint(smallerResult, i, 3);  // todo 3 needs to be replaced by col, but i think thats easier when done in the real spatialjoin class
     pointstr = spatialjoin.betweenQuotes(pointstr);
     auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
     point p(lat1, lng1);
     // add every point together with the row number into the rtree
     rtree.insert(std::make_pair(p, i));
-    box b = computeBoundingBox(spatialjoin.getMaxDist()); // add this as a private function to spatialJoin
+  }
+  for (size_t i = 0; i < otherResult->numRows(); i++) {
+    std::string pointstr = spatialjoin.getPoint(smallerResult, i, 3);  // todo 3 needs to be replaced by col, but i think thats easier when done in the real spatialjoin class
+    pointstr = spatialjoin.betweenQuotes(pointstr);
+    auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
+    point p(lat1, lng1);
+    // query the other rtree for every point using the following bounding box
+    std::vector<box> b = computeBoundingBox(p, spatialjoin.getMaxDist());
   }
 
 
@@ -2130,7 +2190,8 @@ inline void testBoundingBox(const long long& maxDistInMeters, const point& start
         ASSERT_TRUE(dist > maxDistInMeters);
       }
   };
-  box bbox = computeBoundingBox(maxDistInMeters);
+  std::vector<box> bbox = computeBoundingBox(startPoint, maxDistInMeters);
+  solve the compiler problem, now that a vector instead of a box is returned
   // broad grid test
   for (int lon = -180; lon < 180; lon+=20) {
     for (int lat = -90; lat < 90; lat+=20) {
@@ -2153,12 +2214,12 @@ inline void testBoundingBox(const long long& maxDistInMeters, const point& start
   const double xRange = highX - lowX;
   const double yRange = highY - lowY;
   for (size_t i = 0; i <= 100; i++) {
-    irgend eine der 4 auskommentierten Zeilen checkWithin ist falsch
-    vermutlicher Fehler: wenn < -180 oder > 180 bzw. <-90 oder > 90 erzeugt das Fehler
-    mögliche Lösung: implementieren, dass mehrere BoundingBoxen genommen werden
-    können (methode in SpatialJoin: containedIn1 or containedIn2 or ...) und within
-    dann in der Methode benutzt wird und dann bool zurückgibt. Die BoundingBoxen
-    vl in einem vector speichern, damit es beliebig viele werden können
+    // TODO irgend eine der 4 auskommentierten Zeilen checkWithin ist falsch
+    //vermutlicher Fehler: wenn < -180 oder > 180 bzw. <-90 oder > 90 erzeugt das Fehler
+    //mögliche Lösung: implementieren, dass mehrere BoundingBoxen genommen werden
+    //können (methode in SpatialJoin: containedIn1 or containedIn2 or ...) und within
+    //dann in der Methode benutzt wird und dann bool zurückgibt. Die BoundingBoxen
+    //vl in einem vector speichern, damit es beliebig viele werden können
     // barely in or out at the left edge
     testBounds(lowX, lowY + (yRange / 100) * i, bbox, true);
     testBounds(lowX-0.01, lowY + (yRange / 100) * i, bbox, false);
@@ -2179,7 +2240,7 @@ inline void testBoundingBox(const long long& maxDistInMeters, const point& start
 }
 
 TEST(SpatialJoin, boundingBox) {
-  double circ = 40.075 * 1000;  // circumference of the earth (at the equator)
+  double circ = 40075 * 1000;  // circumference of the earth (at the equator)
   for (double lon = -180; lon < 180; lon += 20) {
     std::cerr << "logging: at lon: " << lon << std::endl;
     for (double lat = -90; lat < 90; lat += 20) {
@@ -2188,6 +2249,10 @@ TEST(SpatialJoin, boundingBox) {
       }
     }
   }
+}
+
+TEST(SpatialJoin, createBoundingBox) {
+  ASSERT_TRUE(false);  // todo
 }
 
 }  // namespace boundingBox
