@@ -1981,6 +1981,15 @@ typedef std::pair<point, size_t> value;
 // TOOD: move to the spatialJoin class and use the internal maxDistInMeters. Make
 // the circumference and the radius internal (maybe public for testing) parameters
 std::vector<box> computeBoundingBox(const point& startPoint, const long long& maxDistInMeters) {
+  // safety buffer for numerical inaccuracies
+  double maxDistInMetersBuffer = static_cast<double>(maxDistInMeters);
+  if (maxDistInMeters < 1) {
+    maxDistInMetersBuffer = 1;
+  } else if (maxDistInMeters < std::numeric_limits<long long>::max() / 1.02) {
+    maxDistInMetersBuffer = 1.01 * maxDistInMeters;
+  } else {
+    maxDistInMetersBuffer = std::numeric_limits<long long>::max();
+  }
   // circumference in meters at the equator (as the earth is not exactly a
   // sphere the radius at the equator has been taken)
   constexpr double circumference = 40075 * 1000;  // * 1000 to convert to meters
@@ -1988,8 +1997,8 @@ std::vector<box> computeBoundingBox(const point& startPoint, const long long& ma
   // radius at the equator has been taken)
   constexpr double radius = 6378 * 1000;  // * 1000 to convert to meters
   // compute latitude bound
-  double upperLatBound = startPoint.get<1>() + maxDistInMeters * (360 / circumference);
-  double lowerLatBound = startPoint.get<1>() - maxDistInMeters * (360 / circumference);
+  double upperLatBound = startPoint.get<1>() + maxDistInMetersBuffer * (360 / circumference);
+  double lowerLatBound = startPoint.get<1>() - maxDistInMetersBuffer * (360 / circumference);
   bool poleReached = false;
   // test for "overflows"
   if (lowerLatBound <= -90) {
@@ -2006,7 +2015,7 @@ std::vector<box> computeBoundingBox(const point& startPoint, const long long& ma
 
   // compute longitude bound. For an explanation of the calculation and the
   // naming convention see my master thesis
-  double alpha = maxDistInMeters / radius;
+  double alpha = maxDistInMetersBuffer / radius;
   double gamma = (90 - startPoint.get<1>()) * (2 * std::numbers::pi / 360);
   double beta = std::acos((std::cos(gamma) / std::cos(alpha)));
   double delta = std::acos((std::cos(alpha) - std::cos(gamma) * std::cos(beta))
@@ -2033,6 +2042,16 @@ std::vector<box> computeBoundingBox(const point& startPoint, const long long& ma
               point(rightLonBound, upperLatBound))};
 }
 
+// this function returns true, when the given point is contained in any of the
+// bounding boxes. Move this into the SpatialJoinClass
+bool containedInBoundingBoxes(const std::vector<box>& bbox, const point& point1) {
+  for (size_t i = 0; i < bbox.size(); i++) {
+    if (boost::geometry::covered_by(point1, bbox.at(i))) {
+      return true;
+    }
+  }
+  return false;
+}
 
 bool current_development() {
   std::string kg = createSmallDatasetWithPoints();
@@ -2170,72 +2189,92 @@ TEST(SpatialJoin, currentDevelopment) {
   ASSERT_TRUE(current_development());
 }
 
-// =========================================================================
-// ============== real test using current development ======================
-// =========================================================================
+// =============================================================================
+// =============== real test using current development =========================
+// =============================================================================
 
 namespace boundingBox {
 
 inline void testBoundingBox(const long long& maxDistInMeters, const point& startPoint) {
   auto convertToStr = [](const point& point1) {
-    return absl::StrCat("POINT(", point1.get<0>(), " ", point1.get<1>(), ")");
+    auto lon = absl::StrFormat("%.6f", point1.get<0>());
+    auto lat = absl::StrFormat("%.6f", point1.get<1>());
+    return absl::StrCat("POINT(", lon, " ", lat, ")");
   };
 
-  auto checkWithin = [&](const point& point1, const point& startPoint, const box& bbox) {
-    bool within = boost::geometry::covered_by(point1, bbox);
-    std::string strp1 = convertToStr(point1);
-    std::string strp2 = convertToStr(startPoint);
-    double dist = ad_utility::detail::wktDistImpl(strp1, strp2) * 1000;
+  auto checkOutside = [&](const point& point1, const point& startPoint, 
+                          const std::vector<box>& bbox) {
+    // check if the point is contained in any bounding box
+    bool within = containedInBoundingBoxes(bbox, point1);
       if (!within) {
-        ASSERT_TRUE(dist > maxDistInMeters);
+        std::string strp1 = convertToStr(point1);
+        std::string strp2 = convertToStr(startPoint);
+        double dist = ad_utility::detail::wktDistImpl(strp1, strp2) * 1000;
+        ASSERT_GT(dist, maxDistInMeters);
       }
   };
+
+  auto testBounds = [] (double x, double y, const box& bbox, bool shouldBeWithin) {
+    // correct lon bounds if necessary
+    if (x < -180) {
+      x += 360;
+    } else if (x > 180) {
+      x -= 360;
+    }
+
+    // testing only possible, if lat bounds are correct and the lon bounds
+    // don't cover everything (as then left or right of the box is again
+    // inside the box because of the spherical geometry)
+    double minLonBox = bbox.min_corner().get<0>();
+    double maxLonBox = bbox.max_corner().get<0>();
+    if (y < 90 && y > -90 && !(minLonBox < 179.9 && maxLonBox > 179.9)) {
+      bool within = boost::geometry::covered_by(point(x, y), bbox);
+      ASSERT_TRUE(within == shouldBeWithin);
+    }
+  };
+
   std::vector<box> bbox = computeBoundingBox(startPoint, maxDistInMeters);
-  solve the compiler problem, now that a vector instead of a box is returned
   // broad grid test
   for (int lon = -180; lon < 180; lon+=20) {
     for (int lat = -90; lat < 90; lat+=20) {
-      checkWithin(point(lon, lat), startPoint, bbox);
+      checkOutside(point(lon, lat), startPoint, bbox);
     }
   }
-  
-  auto testBounds = [] (double x, double y, box bbox, bool shouldBeWithin) {
-    bool within = boost::geometry::covered_by(point(x, y), bbox);
-    ASSERT_TRUE(within == shouldBeWithin);
-  };
 
   // do tests at the border of the box
-  const point minPoint = bbox.min_corner();
-  const point maxPoint = bbox.max_corner();
-  const double lowX = minPoint.get<0>();
-  const double lowY = minPoint.get<1>();
-  const double highX = maxPoint.get<0>();
-  const double highY = maxPoint.get<1>();
-  const double xRange = highX - lowX;
-  const double yRange = highY - lowY;
-  for (size_t i = 0; i <= 100; i++) {
-    // TODO irgend eine der 4 auskommentierten Zeilen checkWithin ist falsch
-    //vermutlicher Fehler: wenn < -180 oder > 180 bzw. <-90 oder > 90 erzeugt das Fehler
-    //mögliche Lösung: implementieren, dass mehrere BoundingBoxen genommen werden
-    //können (methode in SpatialJoin: containedIn1 or containedIn2 or ...) und within
-    //dann in der Methode benutzt wird und dann bool zurückgibt. Die BoundingBoxen
-    //vl in einem vector speichern, damit es beliebig viele werden können
-    // barely in or out at the left edge
-    testBounds(lowX, lowY + (yRange / 100) * i, bbox, true);
-    testBounds(lowX-0.01, lowY + (yRange / 100) * i, bbox, false);
-    //checkWithin(point(lowX-0.01, lowY + (yRange / 100) * i), startPoint, bbox);
-    // barely in or out at the bottom edge
-    testBounds(lowX + (xRange / 100) * i, lowY, bbox, true);
-    testBounds(lowX + (xRange / 100) * i, lowY-0.01, bbox, false);
-    //checkWithin(point(lowX + (xRange / 100) * i, lowY-0.01), startPoint, bbox);
-    // barely in or out at the right edge
-    testBounds(highX, lowY + (yRange / 100) * i, bbox, true);
-    testBounds(highX+0.01, lowY + (yRange / 100) * i, bbox, false);
-    //checkWithin(point(highX+0.01, lowY + (yRange / 100) * i), startPoint, bbox);
-    // barely in or out at the top edge
-    testBounds(lowX + (xRange / 100) * i, highY, bbox, true);
-    testBounds(lowX + (xRange / 100) * i, highY+0.01, bbox, false);
-    //checkWithin(point(lowX + (xRange / 100) * i, highY+0.01), startPoint, bbox);
+  for (size_t k = 0; k < bbox.size(); k++) {
+    const point minPoint = bbox.at(k).min_corner();
+    const point maxPoint = bbox.at(k).max_corner();
+    const double lowX = minPoint.get<0>();
+    const double lowY = minPoint.get<1>();
+    const double highX = maxPoint.get<0>();
+    const double highY = maxPoint.get<1>();
+    const double xRange = highX - lowX;
+    const double yRange = highY - lowY;
+    for (size_t i = 0; i <= 100; i++) {
+      // TODO irgend eine der 4 auskommentierten Zeilen checkWithin ist falsch
+      //vermutlicher Fehler: wenn < -180 oder > 180 bzw. <-90 oder > 90 erzeugt das Fehler
+      //mögliche Lösung: implementieren, dass mehrere BoundingBoxen genommen werden
+      //können (methode in SpatialJoin: containedIn1 or containedIn2 or ...) und within
+      //dann in der Methode benutzt wird und dann bool zurückgibt. Die BoundingBoxen
+      //vl in einem vector speichern, damit es beliebig viele werden können
+      // barely in or out at the left edge
+      testBounds(lowX, lowY + (yRange / 100) * i, bbox.at(k), true);
+      testBounds(lowX-0.01, lowY + (yRange / 100) * i, bbox.at(k), false);
+      //checkWithin(point(lowX-0.01, lowY + (yRange / 100) * i), startPoint, bbox);
+      // barely in or out at the bottom edge
+      testBounds(lowX + (xRange / 100) * i, lowY, bbox.at(k), true);
+      testBounds(lowX + (xRange / 100) * i, lowY-0.01, bbox.at(k), false);
+      //checkWithin(point(lowX + (xRange / 100) * i, lowY-0.01), startPoint, bbox);
+      // barely in or out at the right edge
+      testBounds(highX, lowY + (yRange / 100) * i, bbox.at(k), true);
+      testBounds(highX+0.01, lowY + (yRange / 100) * i, bbox.at(k), false);
+      //checkWithin(point(highX+0.01, lowY + (yRange / 100) * i), startPoint, bbox);
+      // barely in or out at the top edge
+      testBounds(lowX + (xRange / 100) * i, highY, bbox.at(k), true);
+      testBounds(lowX + (xRange / 100) * i, highY+0.01, bbox.at(k), false);
+      //checkWithin(point(lowX + (xRange / 100) * i, highY+0.01), startPoint, bbox);
+    }
   }
 }
 
@@ -2253,6 +2292,10 @@ TEST(SpatialJoin, boundingBox) {
 
 TEST(SpatialJoin, createBoundingBox) {
   ASSERT_TRUE(false);  // todo
+}
+
+TEST(SpatialJoin, containedInBoundingBoxes) {
+  ASSERT_TRUE(false);
 }
 
 }  // namespace boundingBox
