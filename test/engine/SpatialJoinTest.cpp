@@ -2026,7 +2026,7 @@ std::vector<box> computeBoundingBox(const point& startPoint, const long long& ma
   // compute longitude bound. For an explanation of the calculation and the
   // naming convention see my master thesis
   double alpha = maxDistInMetersBuffer / radius;
-  double gamma = (90 - startPoint.get<1>()) * (2 * std::numbers::pi / 360);
+  double gamma = (90 - std::abs(startPoint.get<1>())) * (2 * std::numbers::pi / 360);
   double beta = std::acos((std::cos(gamma) / std::cos(alpha)));
   double delta = 0;
   if (maxDistInMetersBuffer > circumference / 20) {
@@ -2107,6 +2107,16 @@ bool current_development() {
   std::shared_ptr<const Result> resTableRight = childRight_->getResult();
   const IdTable* resLeft = &resTableLeft->idTable();
   const IdTable* resRight = &resTableRight->idTable();
+  auto varColMapLeft =
+      childLeft_->getRootOperation()->getExternallyVisibleVariableColumns();
+  auto varColMapRight =
+      childRight_->getRootOperation()->getExternallyVisibleVariableColumns();
+  ColumnIndex leftJoinCol =
+      // varColMapLeft[leftChildVariable_.value()].columnIndex_;
+      varColMapLeft[Variable{"?point1"}].columnIndex_;  // use leftChildVariable again, see line above
+  ColumnIndex rightJoinCol =
+      // varColMapRight[rightChildVariable_.value()].columnIndex_;
+      varColMapRight[Variable{"?point2"}].columnIndex_;  // use rightChildVariable again, see line above
   // size_t numColumns = getResultWidth();
   size_t numColumns = childLeft_->getResultWidth() + childRight_->getResultWidth() + 1;
   IdTable result{numColumns, _executionContext->getAllocator()};
@@ -2114,13 +2124,15 @@ bool current_development() {
   // create r-tree for smaller result table
   auto smallerResult = resLeft;
   auto otherResult = resRight;
+  bool leftResSmaller = true;
   if (resLeft->numRows() > resRight->numRows()) {
     smallerResult = resRight;
     otherResult = resLeft;
+    leftResSmaller = false;
   }
 
   SpatialJoin spatialjoin(_executionContext, SparqlTriple{TripleComponent{Variable{"?point1"}},
-                                        "<max-distance-in-meters:500000>",
+                                        "<max-distance-in-meters:50000>",
                                         TripleComponent{Variable{"?point2"}}}, childLeft_, childRight_);
 
 
@@ -2136,12 +2148,30 @@ bool current_development() {
     rtree.insert(std::make_pair(p, i));
   }
   for (size_t i = 0; i < otherResult->numRows(); i++) {
-    std::string pointstr = spatialjoin.getPoint(smallerResult, i, 3);  // todo 3 needs to be replaced by col, but i think thats easier when done in the real spatialjoin class
+    std::string pointstr = spatialjoin.getPoint(otherResult, i, 3);  // todo 3 needs to be replaced by col, but i think thats easier when done in the real spatialjoin class
     pointstr = spatialjoin.betweenQuotes(pointstr);
     auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
     point p(lat1, lng1);
     // query the other rtree for every point using the following bounding box
-    std::vector<box> b = computeBoundingBox(p, spatialjoin.getMaxDist());
+    std::vector<box> bbox = computeBoundingBox(p, spatialjoin.getMaxDist());
+    std::vector<value> results;
+    for (size_t k = 0; k < bbox.size(); k++) {
+      rtree.query(bgi::intersects(bbox.at(k)), std::back_inserter(results));
+    }
+    for (size_t k = 0; k < results.size(); k++) {
+      size_t rowLeft = results.at(k).second;
+      size_t rowRight = i;
+      if (!leftResSmaller) {
+        rowLeft = i;
+        rowRight = results.at(k).second;
+      }
+      auto distance = spatialjoin.computeDist(resLeft, resRight, rowLeft, rowRight, leftJoinCol, rightJoinCol);
+      if (distance < spatialjoin.getMaxDist()) {
+        spatialjoin.addResultTableEntry(&result, resLeft, resRight, rowLeft, rowRight, distance);
+      }
+    }
+    Result resTable = Result(std::move(result), std::vector<ColumnIndex>{}, LocalVocab{});
+    print_vec(printTable(_executionContext, &resTable));
   }
 
 
