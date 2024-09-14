@@ -285,18 +285,18 @@ void SpatialJoin::addResultTableEntry(IdTable* result,
   }
 }
 
+ColumnIndex SpatialJoin::getJoinCol(const std::shared_ptr<const QueryExecutionTree>& child,
+                       const Variable& childVariable) {
+  auto varColMap =
+      child->getRootOperation()->getExternallyVisibleVariableColumns();
+  return varColMap[childVariable].columnIndex_;
+}
+
 // ____________________________________________________________________________
 Result SpatialJoin::baselineAlgorithm() {
   auto getIdTable = [](std::shared_ptr<QueryExecutionTree> child) {
     std::shared_ptr<const Result> resTable = child->getResult();
     return &resTable->idTable();
-  };
-
-  auto getJoinCol = [](const std::shared_ptr<const QueryExecutionTree>& child,
-                       const Variable& childVariable) {
-    auto varColMap =
-        child->getRootOperation()->getExternallyVisibleVariableColumns();
-    return varColMap[childVariable].columnIndex_;
   };
 
   const IdTable* resLeft = getIdTable(childLeft_);
@@ -419,74 +419,89 @@ bool SpatialJoin::containedInBoundingBoxes(const std::vector<box>& bbox, point p
   return false;
 }
 
+Result SpatialJoin::boundingBoxAlgorithm() {
+  std::shared_ptr<const Result> resTableLeft = childLeft_->getResult();
+  std::shared_ptr<const Result> resTableRight = childRight_->getResult();
+  const IdTable* resLeft = &resTableLeft->idTable();
+  const IdTable* resRight = &resTableRight->idTable();
+  auto varColMapLeft =
+      childLeft_->getRootOperation()->getExternallyVisibleVariableColumns();
+  auto varColMapRight =
+      childRight_->getRootOperation()->getExternallyVisibleVariableColumns();
+  ColumnIndex leftJoinCol =
+      // varColMapLeft[leftChildVariable_.value()].columnIndex_;
+      varColMapLeft[Variable{"?point1"}].columnIndex_;  // use leftChildVariable again, see line above
+  ColumnIndex rightJoinCol =
+      // varColMapRight[rightChildVariable_.value()].columnIndex_;
+      varColMapRight[Variable{"?point2"}].columnIndex_;  // use rightChildVariable again, see line above
+  // size_t numColumns = getResultWidth();
+  size_t numColumns = childLeft_->getResultWidth() + childRight_->getResultWidth() + 1;
+  IdTable result{numColumns, _executionContext->getAllocator()};
+
+  // create r-tree for smaller result table
+  auto smallerResult = resLeft;
+  auto otherResult = resRight;
+  bool leftResSmaller = true;
+  auto smallerChild = childLeft_;
+  auto otherChild = childRight_;
+  auto smallerVariable = leftChildVariable_;
+  auto otherVariable = rightChildVariable_;
+  if (resLeft->numRows() > resRight->numRows()) {
+    smallerResult = resRight;
+    otherResult = resLeft;
+    leftResSmaller = false;
+    smallerChild = childRight_;
+    otherChild = childLeft_;
+    smallerVariable = rightChildVariable_;
+    otherVariable = leftChildVariable_;
+  }
+
+  bgi::rtree<value, bgi::quadratic<16>> rtree;
+  for (size_t i = 0; i < smallerResult->numRows(); i++) {
+    // get point of row i
+    ColumnIndex smallerJoinCol = getJoinCol(smallerChild, smallerVariable);
+    std::string pointstr = getPoint(smallerResult, i, smallerJoinCol);  // todo 3 needs to be replaced by col, but i think thats easier when done in the real spatialjoin class
+    pointstr = betweenQuotes(pointstr);
+    auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
+    point p(lat1, lng1);
+    // add every point together with the row number into the rtree
+    rtree.insert(std::make_pair(p, i));
+  }
+  for (size_t i = 0; i < otherResult->numRows(); i++) {
+    ColumnIndex otherJoinCol = getJoinCol(otherChild, otherVariable);
+    std::string pointstr = getPoint(otherResult, i, otherJoinCol);  // todo 3 needs to be replaced by col, but i think thats easier when done in the real spatialjoin class
+    pointstr = betweenQuotes(pointstr);
+    auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
+    point p(lng1, lat1);
+    // query the other rtree for every point using the following bounding box
+    std::vector<box> bbox = computeBoundingBox(p);
+    std::vector<value> results;
+    for (size_t k = 0; k < bbox.size(); k++) {
+      rtree.query(bgi::intersects(bbox.at(k)), std::back_inserter(results));
+    }
+    for (size_t k = 0; k < results.size(); k++) {
+      size_t rowLeft = results.at(k).second;
+      size_t rowRight = i;
+      if (!leftResSmaller) {
+        rowLeft = i;
+        rowRight = results.at(k).second;
+      }
+      auto distance = computeDist(resLeft, resRight, rowLeft, rowRight, leftJoinCol, rightJoinCol);
+      if (distance < getMaxDist()) {
+        addResultTableEntry(&result, resLeft, resRight, rowLeft, rowRight, distance);
+      }
+    }
+  }
+  Result resTable = Result(std::move(result), std::vector<ColumnIndex>{}, LocalVocab{});
+  return resTable;
+}
+
 // ____________________________________________________________________________
 Result SpatialJoin::computeResult([[maybe_unused]] bool requestLaziness) {
   if (useBaselineAlgorithm_) {
     return baselineAlgorithm();
   } else {
-    std::shared_ptr<const Result> resTableLeft = childLeft_->getResult();
-    std::shared_ptr<const Result> resTableRight = childRight_->getResult();
-    const IdTable* resLeft = &resTableLeft->idTable();
-    const IdTable* resRight = &resTableRight->idTable();
-    auto varColMapLeft =
-        childLeft_->getRootOperation()->getExternallyVisibleVariableColumns();
-    auto varColMapRight =
-        childRight_->getRootOperation()->getExternallyVisibleVariableColumns();
-    ColumnIndex leftJoinCol =
-        // varColMapLeft[leftChildVariable_.value()].columnIndex_;
-        varColMapLeft[Variable{"?point1"}].columnIndex_;  // use leftChildVariable again, see line above
-    ColumnIndex rightJoinCol =
-        // varColMapRight[rightChildVariable_.value()].columnIndex_;
-        varColMapRight[Variable{"?point2"}].columnIndex_;  // use rightChildVariable again, see line above
-    // size_t numColumns = getResultWidth();
-    size_t numColumns = childLeft_->getResultWidth() + childRight_->getResultWidth() + 1;
-    IdTable result{numColumns, _executionContext->getAllocator()};
-
-    // create r-tree for smaller result table
-    auto smallerResult = resLeft;
-    auto otherResult = resRight;
-    bool leftResSmaller = true;
-    if (resLeft->numRows() > resRight->numRows()) {
-      smallerResult = resRight;
-      otherResult = resLeft;
-      leftResSmaller = false;
-    }
-
-    bgi::rtree<value, bgi::quadratic<16>> rtree;
-    for (size_t i = 0; i < smallerResult->numRows(); i++) {
-      // get point of row i
-      std::string pointstr = getPoint(smallerResult, i, 3);  // todo 3 needs to be replaced by col, but i think thats easier when done in the real spatialjoin class
-      pointstr = betweenQuotes(pointstr);
-      auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
-      point p(lat1, lng1);
-      // add every point together with the row number into the rtree
-      rtree.insert(std::make_pair(p, i));
-    }
-    for (size_t i = 0; i < otherResult->numRows(); i++) {
-      std::string pointstr = getPoint(otherResult, i, 3);  // todo 3 needs to be replaced by col, but i think thats easier when done in the real spatialjoin class
-      pointstr = betweenQuotes(pointstr);
-      auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
-      point p(lat1, lng1);
-      // query the other rtree for every point using the following bounding box
-      std::vector<box> bbox = computeBoundingBox(p);
-      std::vector<value> results;
-      for (size_t k = 0; k < bbox.size(); k++) {
-        rtree.query(bgi::intersects(bbox.at(k)), std::back_inserter(results));
-      }
-      for (size_t k = 0; k < results.size(); k++) {
-        size_t rowLeft = results.at(k).second;
-        size_t rowRight = i;
-        if (!leftResSmaller) {
-          rowLeft = i;
-          rowRight = results.at(k).second;
-        }
-        auto distance = computeDist(resLeft, resRight, rowLeft, rowRight, leftJoinCol, rightJoinCol);
-        if (distance < getMaxDist()) {
-          addResultTableEntry(&result, resLeft, resRight, rowLeft, rowRight, distance);
-        }
-      }
-      Result resTable = Result(std::move(result), std::vector<ColumnIndex>{}, LocalVocab{});
-    }
+    return boundingBoxAlgorithm();
   }
 }
 

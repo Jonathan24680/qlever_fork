@@ -86,7 +86,7 @@ class SpatialJoin : public Operation {
     addDistToResult_ = addDistToResult;
   }
 
-  void onlyForBenchmarkingSetUseBaselineAlgorithm(bool useBaselineAlgorithm) {
+  void onlyForTestingSetUseBaselineAlgorithm(bool useBaselineAlgorithm) {
     useBaselineAlgorithm_ = useBaselineAlgorithm;
   }
 
@@ -113,6 +113,10 @@ class SpatialJoin : public Operation {
   // (usually the object of a triple)
   std::string betweenQuotes(std::string extractFrom) const;
 
+  // helper function, which gets the columnIndex, of a "join" variable
+  ColumnIndex getJoinCol(const std::shared_ptr<const QueryExecutionTree>& child,
+                       const Variable& childVariable);
+
   // helper function, which computes the distance of two points, where each
   // point comes from a different result table
   long long computeDist(const IdTable* resLeft, const IdTable* resRight,
@@ -130,6 +134,9 @@ class SpatialJoin : public Operation {
   // the baseline algorithm, which just checks every combination
   Result baselineAlgorithm();
 
+  // the advanced algorithm, which uses bounding boxes
+  Result boundingBoxAlgorithm();
+
   SparqlTriple triple_;
   Variable leftChildVariable_;
   Variable rightChildVariable_;
@@ -141,7 +148,7 @@ class SpatialJoin : public Operation {
   // between the two objects
   bool addDistToResult_ = true;
   const string nameDistanceInternal_ = "?distOfTheTwoObjectsAddedInternally";
-  bool useBaselineAlgorithm_ = true;
+  bool useBaselineAlgorithm_ = false;
   // circumference in meters at the equator (as the earth is not exactly a
   // sphere the radius at the equator has been taken)
   static constexpr double circumference = 40075 * 1000;  // * 1000 to convert to meters

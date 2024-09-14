@@ -252,7 +252,7 @@ void createAndTestSpatialJoin(
     std::shared_ptr<QueryExecutionTree> leftChild,
     std::shared_ptr<QueryExecutionTree> rightChild, bool addLeftChildFirst,
     std::vector<std::vector<std::string>> expectedOutputUnorderedRows,
-    std::vector<std::string> columnNames) {
+    std::vector<std::string> columnNames, bool useBaselineAlgorithm) {
   // this function is like transposing a matrix. An entry which has been stored
   // at (i, k) is now stored at (k, i). The reason this is needed is the
   // following: this function receives the input as a vector of vector of
@@ -309,6 +309,7 @@ void createAndTestSpatialJoin(
   auto expectedOutput =
       localTestHelpers::createRowVectorFromColumnVector(expectedOutputOrdered);
 
+  spatialJoin->onlyForTestingSetUseBaselineAlgorithm(useBaselineAlgorithm);
   auto res = spatialJoin->computeResult(false);
   auto vec = localTestHelpers::printTable(qec, &res);
   EXPECT_THAT(vec, ::testing::UnorderedElementsAreArray(expectedOutput));
@@ -330,7 +331,7 @@ void createAndTestSpatialJoin(
 void buildAndTestSmallTestSetLargeChildren(
     std::string maxDistanceInMetersString, bool addLeftChildFirst,
     std::vector<std::vector<std::string>> expectedOutput,
-    std::vector<std::string> columnNames) {
+    std::vector<std::string> columnNames, bool useBaselineAlgorithm) {
   auto qec = localTestHelpers::buildTestQEC();
   auto numTriples = qec->getIndex().numTriples().normal;
   ASSERT_EQ(numTriples, 15);
@@ -351,7 +352,7 @@ void buildAndTestSmallTestSetLargeChildren(
                                         maxDistanceInMetersString,
                                         TripleComponent{Variable{"?point2"}}},
                            leftChild, rightChild, addLeftChildFirst,
-                           expectedOutput, columnNames);
+                           expectedOutput, columnNames, useBaselineAlgorithm);
 }
 
 // build the test using the small dataset. Let the SpatialJoin operation.
@@ -365,7 +366,7 @@ void buildAndTestSmallTestSetLargeChildren(
 void buildAndTestSmallTestSetSmallChildren(
     std::string maxDistanceInMetersString, bool addLeftChildFirst,
     std::vector<std::vector<std::string>> expectedOutput,
-    std::vector<std::string> columnNames) {
+    std::vector<std::string> columnNames, bool useBaselineAlgorithm) {
   auto qec = localTestHelpers::buildTestQEC();
   auto numTriples = qec->getIndex().numTriples().normal;
   ASSERT_EQ(numTriples, 15);
@@ -379,7 +380,7 @@ void buildAndTestSmallTestSetSmallChildren(
 
   createAndTestSpatialJoin(
       qec, SparqlTriple{point1, maxDistanceInMetersString, point2}, leftChild,
-      rightChild, addLeftChildFirst, expectedOutput, columnNames);
+      rightChild, addLeftChildFirst, expectedOutput, columnNames, useBaselineAlgorithm);
 }
 
 // build the test using the small dataset. Let the SpatialJoin operation be the
@@ -396,7 +397,7 @@ void buildAndTestSmallTestSetSmallChildren(
 void buildAndTestSmallTestSetDiffSizeChildren(
     std::string maxDistanceInMetersString, bool addLeftChildFirst,
     std::vector<std::vector<std::string>> expectedOutput,
-    std::vector<std::string> columnNames, bool bigChildLeft) {
+    std::vector<std::string> columnNames, bool bigChildLeft, bool useBaselineAlgorithm) {
   auto qec = localTestHelpers::buildTestQEC();
   auto numTriples = qec->getIndex().numTriples().normal;
   ASSERT_EQ(numTriples, 15);
@@ -421,7 +422,7 @@ void buildAndTestSmallTestSetDiffSizeChildren(
   createAndTestSpatialJoin(
       qec,
       SparqlTriple{firstVariable, maxDistanceInMetersString, secondVariable},
-      firstChild, secondChild, addLeftChildFirst, expectedOutput, columnNames);
+      firstChild, secondChild, addLeftChildFirst, expectedOutput, columnNames, useBaselineAlgorithm);
 }
 
 std::vector<std::string> mergeToRow(std::vector<std::string> part1,
@@ -900,75 +901,75 @@ std::vector<std::vector<std::string>> expectedMaxDist10000000_rows_diff{
                expectedDistEifLib)};
 
 // test the compute result method on small examples
-TEST(SpatialJoin, computeResultSmallDatasetLargeChildren) {
+void computeResultSmallDatasetLargeChildren(bool useBaselineAlgorithm) {
   std::vector<std::string> columnNames = {
       "?name1",  "?obj1",   "?geo1",
       "?point1", "?name2",  "?obj2",
       "?geo2",   "?point2", "?distOfTheTwoObjectsAddedInternally"};
   buildAndTestSmallTestSetLargeChildren("<max-distance-in-meters:1>", true,
-                                        expectedMaxDist1_rows, columnNames);
+                                        expectedMaxDist1_rows, columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetLargeChildren("<max-distance-in-meters:1>", false,
-                                        expectedMaxDist1_rows, columnNames);
+                                        expectedMaxDist1_rows, columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetLargeChildren("<max-distance-in-meters:5000>", true,
-                                        expectedMaxDist5000_rows, columnNames);
+                                        expectedMaxDist5000_rows, columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetLargeChildren("<max-distance-in-meters:5000>", false,
-                                        expectedMaxDist5000_rows, columnNames);
+                                        expectedMaxDist5000_rows, columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetLargeChildren("<max-distance-in-meters:500000>", true,
                                         expectedMaxDist500000_rows,
-                                        columnNames);
+                                        columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetLargeChildren("<max-distance-in-meters:500000>",
                                         false, expectedMaxDist500000_rows,
-                                        columnNames);
+                                        columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetLargeChildren("<max-distance-in-meters:1000000>",
                                         true, expectedMaxDist1000000_rows,
-                                        columnNames);
+                                        columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetLargeChildren("<max-distance-in-meters:1000000>",
                                         false, expectedMaxDist1000000_rows,
-                                        columnNames);
+                                        columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetLargeChildren("<max-distance-in-meters:10000000>",
                                         true, expectedMaxDist10000000_rows,
-                                        columnNames);
+                                        columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetLargeChildren("<max-distance-in-meters:10000000>",
                                         false, expectedMaxDist10000000_rows,
-                                        columnNames);
+                                        columnNames, useBaselineAlgorithm);
 }
 
-TEST(SpatialJoin, computeResultSmallDatasetSmallChildren) {
+void computeResultSmallDatasetSmallChildren(bool useBaselineAlgorithm) {
   std::vector<std::string> columnNames{"?obj1", "?point1", "?obj2", "?point2",
                                        "?distOfTheTwoObjectsAddedInternally"};
   buildAndTestSmallTestSetSmallChildren("<max-distance-in-meters:1>", true,
                                         expectedMaxDist1_rows_small,
-                                        columnNames);
+                                        columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetSmallChildren("<max-distance-in-meters:1>", false,
                                         expectedMaxDist1_rows_small,
-                                        columnNames);
+                                        columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetSmallChildren("<max-distance-in-meters:5000>", true,
                                         expectedMaxDist5000_rows_small,
-                                        columnNames);
+                                        columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetSmallChildren("<max-distance-in-meters:5000>", false,
                                         expectedMaxDist5000_rows_small,
-                                        columnNames);
+                                        columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetSmallChildren("<max-distance-in-meters:500000>", true,
                                         expectedMaxDist500000_rows_small,
-                                        columnNames);
+                                        columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetSmallChildren("<max-distance-in-meters:500000>",
                                         false, expectedMaxDist500000_rows_small,
-                                        columnNames);
+                                        columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetSmallChildren("<max-distance-in-meters:1000000>",
                                         true, expectedMaxDist1000000_rows_small,
-                                        columnNames);
+                                        columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetSmallChildren(
       "<max-distance-in-meters:1000000>", false,
-      expectedMaxDist1000000_rows_small, columnNames);
+      expectedMaxDist1000000_rows_small, columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetSmallChildren(
       "<max-distance-in-meters:10000000>", true,
-      expectedMaxDist10000000_rows_small, columnNames);
+      expectedMaxDist10000000_rows_small, columnNames, useBaselineAlgorithm);
   buildAndTestSmallTestSetSmallChildren(
       "<max-distance-in-meters:10000000>", false,
-      expectedMaxDist10000000_rows_small, columnNames);
+      expectedMaxDist10000000_rows_small, columnNames, useBaselineAlgorithm);
 }
 
-TEST(SpatialJoin, computeResultSmallDatasetDifferentSizeChildren) {
+void computeResultSmallDatasetDifferentSizeChildren(bool useBaselineAlgorithm) {
   std::vector<std::string> columnNames{"?name1",
                                        "?obj1",
                                        "?geo1",
@@ -978,64 +979,89 @@ TEST(SpatialJoin, computeResultSmallDatasetDifferentSizeChildren) {
                                        "?distOfTheTwoObjectsAddedInternally"};
   buildAndTestSmallTestSetDiffSizeChildren("<max-distance-in-meters:1>", true,
                                            expectedMaxDist1_rows_diff,
-                                           columnNames, true);
+                                           columnNames, true, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren("<max-distance-in-meters:1>", false,
                                            expectedMaxDist1_rows_diff,
-                                           columnNames, true);
+                                           columnNames, true, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren("<max-distance-in-meters:1>", true,
                                            expectedMaxDist1_rows_diff,
-                                           columnNames, false);
+                                           columnNames, false, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren("<max-distance-in-meters:1>", false,
                                            expectedMaxDist1_rows_diff,
-                                           columnNames, false);
+                                           columnNames, false, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren("<max-distance-in-meters:5000>",
                                            true, expectedMaxDist5000_rows_diff,
-                                           columnNames, true);
+                                           columnNames, true, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren("<max-distance-in-meters:5000>",
                                            false, expectedMaxDist5000_rows_diff,
-                                           columnNames, true);
+                                           columnNames, true, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren("<max-distance-in-meters:5000>",
                                            true, expectedMaxDist5000_rows_diff,
-                                           columnNames, false);
+                                           columnNames, false, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren("<max-distance-in-meters:5000>",
                                            false, expectedMaxDist5000_rows_diff,
-                                           columnNames, false);
+                                           columnNames, false, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren(
       "<max-distance-in-meters:500000>", true, expectedMaxDist500000_rows_diff,
-      columnNames, true);
+      columnNames, true, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren(
       "<max-distance-in-meters:500000>", false, expectedMaxDist500000_rows_diff,
-      columnNames, true);
+      columnNames, true, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren(
       "<max-distance-in-meters:500000>", true, expectedMaxDist500000_rows_diff,
-      columnNames, false);
+      columnNames, false, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren(
       "<max-distance-in-meters:500000>", false, expectedMaxDist500000_rows_diff,
-      columnNames, false);
+      columnNames, false, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren(
       "<max-distance-in-meters:1000000>", true,
-      expectedMaxDist1000000_rows_diff, columnNames, true);
+      expectedMaxDist1000000_rows_diff, columnNames, true, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren(
       "<max-distance-in-meters:1000000>", false,
-      expectedMaxDist1000000_rows_diff, columnNames, true);
+      expectedMaxDist1000000_rows_diff, columnNames, true, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren(
       "<max-distance-in-meters:1000000>", true,
-      expectedMaxDist1000000_rows_diff, columnNames, false);
+      expectedMaxDist1000000_rows_diff, columnNames, false, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren(
       "<max-distance-in-meters:1000000>", false,
-      expectedMaxDist1000000_rows_diff, columnNames, false);
+      expectedMaxDist1000000_rows_diff, columnNames, false, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren(
       "<max-distance-in-meters:10000000>", true,
-      expectedMaxDist10000000_rows_diff, columnNames, true);
+      expectedMaxDist10000000_rows_diff, columnNames, true, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren(
       "<max-distance-in-meters:10000000>", false,
-      expectedMaxDist10000000_rows_diff, columnNames, true);
+      expectedMaxDist10000000_rows_diff, columnNames, true, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren(
       "<max-distance-in-meters:10000000>", true,
-      expectedMaxDist10000000_rows_diff, columnNames, false);
+      expectedMaxDist10000000_rows_diff, columnNames, false, useBaselineAlgorithm);
   buildAndTestSmallTestSetDiffSizeChildren(
       "<max-distance-in-meters:10000000>", false,
-      expectedMaxDist10000000_rows_diff, columnNames, false);
+      expectedMaxDist10000000_rows_diff, columnNames, false, useBaselineAlgorithm);
+}
+
+TEST(SpatialJoin, computeResultSmallDatasetLargeChildrenBaseline) {
+  computeResultSmallDatasetLargeChildren(true);
+}
+
+TEST(SpatialJoin, computeResultSmallDatasetLargeChildrenBoundingBox) {
+  computeResultSmallDatasetLargeChildren(false);
+}
+
+TEST(SpatialJoin, computeResultSmallDatasetSmallChildrenBaseline) {
+  computeResultSmallDatasetSmallChildren(true);
+}
+
+TEST(SpatialJoin, computeResultSmallDatasetSmallChildrenBoundingBox) {
+  computeResultSmallDatasetSmallChildren(false);
+}
+
+
+TEST(SpatialJoin, computeResultSmallDatasetDifferentSizeChildrenBaseline) {
+  computeResultSmallDatasetDifferentSizeChildren(true);
+}
+
+TEST(SpatialJoin, computeResultSmallDatasetDifferentSizeChildrenBoundingBox) {
+  computeResultSmallDatasetDifferentSizeChildren(false);
 }
 
 }  // end of Namespace computeResultTest
@@ -1841,6 +1867,16 @@ TEST(SpatialJoin, getMultiplicity) {
 TEST(SpatialJoin, getSizeEstimate) {
   testMultiplicitiesOrSizeEstimate(false, false);
   testMultiplicitiesOrSizeEstimate(true, false);
+}
+
+TEST(SpatialJoin, getCostEstimateBaselineAlgorithm) {
+  // onlyForTestingSetUseBaselineAlgorithm(true);
+  ASSERT_TRUE(false);  // TODO
+}
+
+TEST(SpatialJoin, getCostEstimateBoundingBoxAlgorithm) {
+  // onlyForTestingSetUseBaselineAlgorithm(false);
+  ASSERT_TRUE(false);  // TODO
 }
 
 }  // namespace getMultiplicityAndSizeEstimate
