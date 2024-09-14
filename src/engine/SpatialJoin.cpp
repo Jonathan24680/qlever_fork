@@ -463,7 +463,7 @@ Result SpatialJoin::boundingBoxAlgorithm() {
     std::string pointstr = getPoint(smallerResult, i, smallerJoinCol);  // todo 3 needs to be replaced by col, but i think thats easier when done in the real spatialjoin class
     pointstr = betweenQuotes(pointstr);
     auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
-    point p(lat1, lng1);
+    point p(lng1, lat1);
     // add every point together with the row number into the rtree
     rtree.insert(std::make_pair(p, i));
   }
