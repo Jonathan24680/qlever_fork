@@ -15,6 +15,11 @@
 #include "engine/SpatialJoin.h"
 #include "parser/data/Variable.h"
 
+#include <boost/geometry.hpp>
+#include <boost/geometry/geometries/point.hpp>
+#include <boost/geometry/geometries/box.hpp>
+#include <boost/foreach.hpp>
+
 using namespace ad_utility::testing;
 
 namespace localTestHelpers {
@@ -1839,3 +1844,224 @@ TEST(SpatialJoin, getSizeEstimate) {
 }
 
 }  // namespace getMultiplicityAndSizeEstimate
+
+namespace boundingBox {
+
+namespace bg = boost::geometry;
+namespace bgi = boost::geometry::index;
+
+typedef bg::model::point<double, 2, bg::cs::cartesian> point;
+typedef bg::model::box<point> box;
+typedef std::pair<point, size_t> value;
+
+inline void testBoundingBox(const long long& maxDistInMeters, const point& startPoint) {
+  auto convertToStr = [](const point& point1) {
+    auto lon = absl::StrFormat("%.6f", point1.get<0>());
+    auto lat = absl::StrFormat("%.6f", point1.get<1>());
+    return absl::StrCat("POINT(", lon, " ", lat, ")");
+  };
+
+  auto checkOutside = [&](const point& point1, const point& startPoint, 
+                          const std::vector<box>& bbox, SpatialJoin* spatialJoin) {
+    // check if the point is contained in any bounding box
+    bool within = spatialJoin->containedInBoundingBoxes(bbox, point1);
+      if (!within) {
+        std::string strp1 = convertToStr(point1);
+        std::string strp2 = convertToStr(startPoint);
+        double dist = ad_utility::detail::wktDistImpl(strp1, strp2) * 1000;
+        if (dist <= maxDistInMeters) {
+          std::cerr << "ERR p1" << point1.get<0>() << " " << point1.get<1>() <<
+                " p2 " << startPoint.get<0>() << " " << startPoint.get<1>() << std::endl;
+        }
+        ASSERT_GT(dist, maxDistInMeters);
+      }
+  };
+
+  auto testBounds = [] (double x, double y, const box& bbox, bool shouldBeWithin) {
+    // correct lon bounds if necessary
+    if (x < -180) {
+      x += 360;
+    } else if (x > 180) {
+      x -= 360;
+    }
+
+    // testing only possible, if lat bounds are correct and the lon bounds
+    // don't cover everything (as then left or right of the box is again
+    // inside the box because of the spherical geometry)
+    double minLonBox = bbox.min_corner().get<0>();
+    double maxLonBox = bbox.max_corner().get<0>();
+    if (y < 90 && y > -90 && !(minLonBox < 179.9999 && maxLonBox > 179.9999)) {
+      bool within = boost::geometry::covered_by(point(x, y), bbox);
+      ASSERT_TRUE(within == shouldBeWithin);
+    }
+  };
+
+  // build dummy join to access the containedInBoundingBox and computeBoundingBox
+  // functions
+  auto qec = localTestHelpers::buildTestQEC();
+  auto spatialJoinTriple = SparqlTriple{TripleComponent{Variable{"?point1"}},
+                                        "<max-distance-in-meters:1000>",
+                                        TripleComponent{Variable{"?point2"}}};
+  std::shared_ptr<QueryExecutionTree> spatialJoinOperation =
+        ad_utility::makeExecutionTree<SpatialJoin>(qec, spatialJoinTriple,
+                                                   std::nullopt, std::nullopt);
+
+  // add children and test, that multiplicity is a dummy return before all
+  // children are added
+  std::shared_ptr<Operation> op = spatialJoinOperation->getRootOperation();
+  SpatialJoin* spatialJoin = static_cast<SpatialJoin*>(op.get());
+
+  std::vector<box> bbox = spatialJoin->computeBoundingBox(startPoint);
+  // broad grid test
+  for (int lon = -180; lon < 180; lon+=20) {
+    for (int lat = -90; lat < 90; lat+=20) {
+      checkOutside(point(lon, lat), startPoint, bbox, spatialJoin);
+    }
+  }
+
+  // do tests at the border of the box
+  for (size_t k = 0; k < bbox.size(); k++) {
+    // use a small delta for testing because of floating point inaccuracies
+    const double delta = 0.00000001;
+    const point minPoint = bbox.at(k).min_corner();
+    const point maxPoint = bbox.at(k).max_corner();
+    const double lowX = minPoint.get<0>();
+    const double lowY = minPoint.get<1>();
+    const double highX = maxPoint.get<0>();
+    const double highY = maxPoint.get<1>();
+    const double xRange = highX - lowX - 2 * delta;
+    const double yRange = highY - lowY - 2 * delta;
+    for (size_t i = 0; i <= 100; i++) {
+      // barely in or out at the left edge
+      testBounds(lowX + delta, lowY + delta + (yRange / 100) * i, bbox.at(k), true);
+      testBounds(lowX - delta, lowY + delta + (yRange / 100) * i, bbox.at(k), false);
+      checkOutside(point(lowX - delta, lowY + (yRange / 100) * i), startPoint, bbox, spatialJoin);
+      // barely in or out at the bottom edge
+      testBounds(lowX + delta + (xRange / 100) * i, lowY + delta, bbox.at(k), true);
+      testBounds(lowX + delta + (xRange / 100) * i, lowY - delta, bbox.at(k), false);
+      checkOutside(point(lowX + (xRange / 100) * i, lowY - delta), startPoint, bbox, spatialJoin);
+      // barely in or out at the right edge
+      testBounds(highX - delta, lowY + delta + (yRange / 100) * i, bbox.at(k), true);
+      testBounds(highX + delta, lowY + delta + (yRange / 100) * i, bbox.at(k), false);
+      checkOutside(point(highX + delta, lowY + (yRange / 100) * i), startPoint, bbox, spatialJoin);
+      // barely in or out at the top edge
+      testBounds(lowX + delta + (xRange / 100) * i, highY - delta, bbox.at(k), true);
+      testBounds(lowX + delta + (xRange / 100) * i, highY + delta, bbox.at(k), false);
+      checkOutside(point(lowX + (xRange / 100) * i, highY + delta), startPoint, bbox, spatialJoin);
+    }
+  }
+}
+
+TEST(SpatialJoin, computeBoundingBox) {
+  double circ = 40075 * 1000;  // circumference of the earth (at the equator)
+  // 180.0001 in case 180 is represented internally as 180.0000000001
+  for (double lon = -180; lon <= 180.0001; lon += 15) {
+    // 90.0001 in case 90 is represented internally as 90.000000001
+    for (double lat = -90; lat <= 90.0001; lat += 15) {
+      // circ / 2 means, that all points on earth are within maxDist km of any
+      // starting point
+      for (int maxDist = 0; maxDist <= circ / 2.0; maxDist += circ / 36.0) {
+        if (lon > -170 && lon < 170)
+        testBoundingBox(maxDist, point(lon, lat));
+      }
+    }
+  }
+}
+
+TEST(SpatialJoin, containedInBoundingBoxes) {
+  // build dummy join to access the containedInBoundingBox and computeBoundingBox
+  // functions
+  auto qec = localTestHelpers::buildTestQEC();
+  auto spatialJoinTriple = SparqlTriple{TripleComponent{Variable{"?point1"}},
+                                        "<max-distance-in-meters:1000>",
+                                        TripleComponent{Variable{"?point2"}}};
+  std::shared_ptr<QueryExecutionTree> spatialJoinOperation =
+        ad_utility::makeExecutionTree<SpatialJoin>(qec, spatialJoinTriple,
+                                                   std::nullopt, std::nullopt);
+
+  // add children and test, that multiplicity is a dummy return before all
+  // children are added
+  std::shared_ptr<Operation> op = spatialJoinOperation->getRootOperation();
+  SpatialJoin* spatialJoin = static_cast<SpatialJoin*>(op.get());
+
+  // note that none of the boxes is overlapping, therefore we can check, that
+  // none of the points which should be contained in one box are contained in
+  // another box
+  std::vector<box> boxes = {
+    box(point(20, 40), point(40, 60)),
+    box(point(-180, -20), point(-150, 30)),  // touching left border
+    box(point(50, -30), point(180, 10)),  // touching right border
+    box(point(-30, 50), point(10, 90)),  // touching north pole
+    box(point(-45, -90), point(0, -45))  // touching south pole
+  };
+  
+  std::vector<std::vector<point>> containedInBox = {
+    {point(20, 40), point(40, 40), point(40, 60), point(20, 60), point(30, 50)},
+    {point(-180, -20), point(-150, -20), point(-150, 30), point(-180, 30), point(-150, 0)},
+    {point(50, -30), point(180, -30), point(180, 10), point(50, 10), point(70, -10)},
+    {point(-30, 50), point(10, 50), point(10, 90), point(-30, 90), point(-20, 60)},
+    {point(-45, -90), point(0, -90), point(0, -45), point(-45, -45), point(-10, -60)}
+  };
+
+  // all combinations of box is contained in bounding boxes and is not contained.
+  // a one encodes, the bounding box is contained in the set of bounding boxes, 
+  // a zero encodes, it isn't
+  for (size_t a = 0; a <= 1; a++) {
+    for (size_t b = 0; a <= 1; a++) {
+      for (size_t c = 0; a <= 1; a++) {
+        for (size_t d = 0; a <= 1; a++) {
+          for (size_t e = 0; a <= 1; a++) {
+            std::vector<box> toTest;
+            std::vector<std::vector<point>> shouldBeContained;
+            std::vector<std::vector<point>> shouldNotBeContained;
+            if (a == 1) {
+              toTest.push_back(boxes.at(0));
+              shouldBeContained.push_back(containedInBox.at(0));
+            } else {
+              shouldNotBeContained.push_back(containedInBox.at(0));
+            }
+            if (b == 1) {
+              toTest.push_back(boxes.at(1));
+              shouldBeContained.push_back(containedInBox.at(1));
+            } else {
+              shouldNotBeContained.push_back(containedInBox.at(1));
+            }
+            if (c == 1) {
+              toTest.push_back(boxes.at(2));
+              shouldBeContained.push_back(containedInBox.at(2));
+            } else {
+              shouldNotBeContained.push_back(containedInBox.at(2));
+            }
+            if (d == 1) {
+              toTest.push_back(boxes.at(3));
+              shouldBeContained.push_back(containedInBox.at(3));
+            } else {
+              shouldNotBeContained.push_back(containedInBox.at(3));
+            }
+            if (e == 1) {
+              toTest.push_back(boxes.at(4));
+              shouldBeContained.push_back(containedInBox.at(4));
+            } else {
+              shouldNotBeContained.push_back(containedInBox.at(4));
+            }
+            if (toTest.size() > 0) {
+              for (size_t i = 0; i < shouldBeContained.size(); i++) {
+                for (size_t k = 0; k < shouldBeContained.at(i).size(); k++) {
+                  ASSERT_TRUE(spatialJoin->containedInBoundingBoxes(toTest, shouldBeContained.at(i).at(k)));
+                }
+              }
+              for (size_t i = 0; i < shouldNotBeContained.size(); i++) {
+                for (size_t k = 0; k < shouldNotBeContained.at(i).size(); k++) {
+                  ASSERT_FALSE(spatialJoin->containedInBoundingBoxes(toTest, shouldNotBeContained.at(i).at(k)));
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+}
+
+}  // namespace boundingBox

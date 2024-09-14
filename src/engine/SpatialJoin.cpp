@@ -227,19 +227,19 @@ std::string SpatialJoin::betweenQuotes(std::string extractFrom) const {
   }
 }
 
+std::string SpatialJoin::getPoint(const IdTable* restable, size_t row, ColumnIndex col) const {
+  return betweenQuotes(
+        ExportQueryExecutionTrees::idToStringAndType(
+            getExecutionContext()->getIndex(), restable->at(row, col), {})
+            .value()
+            .first);
+}
+
 // ____________________________________________________________________________
 long long SpatialJoin::computeDist(const IdTable* resLeft,
                                    const IdTable* resRight, size_t rowLeft,
                                    size_t rowRight, ColumnIndex leftPointCol,
                                    ColumnIndex rightPointCol) const {
-  auto getPoint = [&](const IdTable* restable, size_t row, ColumnIndex col) {
-    return betweenQuotes(
-        ExportQueryExecutionTrees::idToStringAndType(
-            getExecutionContext()->getIndex(), restable->at(row, col), {})
-            .value()
-            .first);
-  };
-
   std::string point1 = getPoint(resLeft, rowLeft, leftPointCol);
   std::string point2 = getPoint(resRight, rowRight, rightPointCol);
   double dist = ad_utility::detail::wktDistImpl(point1, point2);
@@ -322,11 +322,171 @@ Result SpatialJoin::baselineAlgorithm() {
 }
 
 // ____________________________________________________________________________
+std::vector<box> SpatialJoin::computeBoundingBox(const point& startPoint) {
+  // haversine function
+  auto hav = [](double theta) {
+    return (1 - std::cos(theta)) / 2;
+  };
+
+  // inverse haversine function
+  auto archav = [](double theta) {
+    return std::acos(1 - 2 * theta);
+  };
+
+  // safety buffer for numerical inaccuracies
+  double maxDistInMetersBuffer = static_cast<double>(maxDist_);
+  if (maxDist_ < 10) {
+    maxDistInMetersBuffer = 10;
+  } else if (maxDist_ < std::numeric_limits<long long>::max() / 1.02) {
+    maxDistInMetersBuffer = 1.01 * maxDist_;
+  } else {
+    maxDistInMetersBuffer = std::numeric_limits<long long>::max();
+  }
+  
+  // compute latitude bound
+  double upperLatBound = startPoint.get<1>() + maxDistInMetersBuffer * (360 / circumference);
+  double lowerLatBound = startPoint.get<1>() - maxDistInMetersBuffer * (360 / circumference);
+  bool poleReached = false;
+  // test for "overflows"
+  if (lowerLatBound <= -90) {
+    lowerLatBound = -90;
+    poleReached = true;  // south pole reached
+  }
+  if (upperLatBound >= 90) {
+    upperLatBound = 90;
+    poleReached = true;  // north pole reached
+  }
+  if (poleReached) {
+    return {box(point(-180.0f, lowerLatBound), point(180.0f, upperLatBound))};
+  }
+
+  // compute longitude bound. For an explanation of the calculation and the
+  // naming convention see my master thesis
+  double alpha = maxDistInMetersBuffer / radius;
+  double gamma = (90 - std::abs(startPoint.get<1>())) * (2 * std::numbers::pi / 360);
+  double beta = std::acos((std::cos(gamma) / std::cos(alpha)));
+  double delta = 0;
+  if (maxDistInMetersBuffer > circumference / 20) {
+    // use law of cosines
+    delta = std::acos((std::cos(alpha) - std::cos(gamma) * std::cos(beta))
+                                / (std::sin(gamma) * std::sin(beta)));
+  } else {
+    // use law of haversines for numerical stability
+    delta = archav((hav(alpha - hav(gamma - beta))) / (std::sin(gamma) * std::sin(beta)));
+  }
+  double lonRange = delta * 360 / (2 * std::numbers::pi);
+  double leftLonBound = startPoint.get<0>() - lonRange;
+  double rightLonBound = startPoint.get<0>() + lonRange;
+  // test for "overflows" and create two bounding boxes if necessary
+  if (leftLonBound < -180) {
+    box box1 = box(point(-180, lowerLatBound),
+                  point(rightLonBound, upperLatBound));
+    box box2 = box(point(leftLonBound + 360, lowerLatBound),
+                  point(180, upperLatBound));
+    return {box1, box2};
+  } else if (rightLonBound > 180) {
+    box box1 = box(point(leftLonBound, lowerLatBound),
+                  point(180, upperLatBound));
+    box box2 = box(point(-180, lowerLatBound),
+                  point(rightLonBound - 360, upperLatBound));
+    return {box1, box2};
+  }
+  // default case, when no bound has an "overflow"
+  return {box(point(leftLonBound, lowerLatBound),
+              point(rightLonBound, upperLatBound))};
+}
+
+// ____________________________________________________________________________
+bool SpatialJoin::containedInBoundingBoxes(const std::vector<box>& bbox, point point1) {
+  // correct lon bounds if necessary
+  while (point1.get<0>() < -180) {
+    point1.set<0>(point1.get<0>() + 360);
+  } 
+  while (point1.get<0>() > 180) {
+    point1.set<0>(point1.get<0>() - 360);
+  }
+  if (point1.get<1>() < -90){
+    point1.set<1>(-90);
+  } else if (point1.get<1>() > 90) {
+    point1.set<1>(90);
+  }
+
+  for (size_t i = 0; i < bbox.size(); i++) {
+    if (boost::geometry::covered_by(point1, bbox.at(i))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// ____________________________________________________________________________
 Result SpatialJoin::computeResult([[maybe_unused]] bool requestLaziness) {
   if (useBaselineAlgorithm_) {
     return baselineAlgorithm();
   } else {
-    AD_THROW("Not yet implemented");
+    std::shared_ptr<const Result> resTableLeft = childLeft_->getResult();
+    std::shared_ptr<const Result> resTableRight = childRight_->getResult();
+    const IdTable* resLeft = &resTableLeft->idTable();
+    const IdTable* resRight = &resTableRight->idTable();
+    auto varColMapLeft =
+        childLeft_->getRootOperation()->getExternallyVisibleVariableColumns();
+    auto varColMapRight =
+        childRight_->getRootOperation()->getExternallyVisibleVariableColumns();
+    ColumnIndex leftJoinCol =
+        // varColMapLeft[leftChildVariable_.value()].columnIndex_;
+        varColMapLeft[Variable{"?point1"}].columnIndex_;  // use leftChildVariable again, see line above
+    ColumnIndex rightJoinCol =
+        // varColMapRight[rightChildVariable_.value()].columnIndex_;
+        varColMapRight[Variable{"?point2"}].columnIndex_;  // use rightChildVariable again, see line above
+    // size_t numColumns = getResultWidth();
+    size_t numColumns = childLeft_->getResultWidth() + childRight_->getResultWidth() + 1;
+    IdTable result{numColumns, _executionContext->getAllocator()};
+
+    // create r-tree for smaller result table
+    auto smallerResult = resLeft;
+    auto otherResult = resRight;
+    bool leftResSmaller = true;
+    if (resLeft->numRows() > resRight->numRows()) {
+      smallerResult = resRight;
+      otherResult = resLeft;
+      leftResSmaller = false;
+    }
+
+    bgi::rtree<value, bgi::quadratic<16>> rtree;
+    for (size_t i = 0; i < smallerResult->numRows(); i++) {
+      // get point of row i
+      std::string pointstr = getPoint(smallerResult, i, 3);  // todo 3 needs to be replaced by col, but i think thats easier when done in the real spatialjoin class
+      pointstr = betweenQuotes(pointstr);
+      auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
+      point p(lat1, lng1);
+      // add every point together with the row number into the rtree
+      rtree.insert(std::make_pair(p, i));
+    }
+    for (size_t i = 0; i < otherResult->numRows(); i++) {
+      std::string pointstr = getPoint(otherResult, i, 3);  // todo 3 needs to be replaced by col, but i think thats easier when done in the real spatialjoin class
+      pointstr = betweenQuotes(pointstr);
+      auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
+      point p(lat1, lng1);
+      // query the other rtree for every point using the following bounding box
+      std::vector<box> bbox = computeBoundingBox(p);
+      std::vector<value> results;
+      for (size_t k = 0; k < bbox.size(); k++) {
+        rtree.query(bgi::intersects(bbox.at(k)), std::back_inserter(results));
+      }
+      for (size_t k = 0; k < results.size(); k++) {
+        size_t rowLeft = results.at(k).second;
+        size_t rowRight = i;
+        if (!leftResSmaller) {
+          rowLeft = i;
+          rowRight = results.at(k).second;
+        }
+        auto distance = computeDist(resLeft, resRight, rowLeft, rowRight, leftJoinCol, rightJoinCol);
+        if (distance < getMaxDist()) {
+          addResultTableEntry(&result, resLeft, resRight, rowLeft, rowRight, distance);
+        }
+      }
+      Result resTable = Result(std::move(result), std::vector<ColumnIndex>{}, LocalVocab{});
+    }
   }
 }
 

@@ -2,6 +2,17 @@
 
 #include "engine/Operation.h"
 #include "parser/ParsedQuery.h"
+#include <boost/geometry.hpp>
+#include <boost/geometry/geometries/point.hpp>
+#include <boost/geometry/geometries/box.hpp>
+#include <boost/foreach.hpp>
+
+namespace bg = boost::geometry;
+namespace bgi = boost::geometry::index;
+
+typedef bg::model::point<double, 2, bg::cs::cartesian> point;
+typedef bg::model::box<point> box;
+typedef std::pair<point, size_t> value;
 
 // This class is implementing a SpatialJoin operation. This operations joins
 // two tables, using their positional column. If the distance of the two
@@ -83,6 +94,16 @@ class SpatialJoin : public Operation {
     return nameDistanceInternal_;
   }
 
+  std::string getPoint(const IdTable* restable, size_t row, ColumnIndex col) const;
+
+  // this function computes the bounding box(es), which represent all points, which
+  // are in reach of the starting point with a distance of at most maxDistanceInMeters
+  std::vector<box> computeBoundingBox(const point& startPoint);
+
+  // this function returns true, when the given point is contained in any of the
+  // bounding boxes
+  bool containedInBoundingBoxes(const std::vector<box>& bbox, point point1);
+
  private:
   // helper function, which parses the max distance triple into a long long
   // distance
@@ -121,4 +142,10 @@ class SpatialJoin : public Operation {
   bool addDistToResult_ = true;
   const string nameDistanceInternal_ = "?distOfTheTwoObjectsAddedInternally";
   bool useBaselineAlgorithm_ = true;
+  // circumference in meters at the equator (as the earth is not exactly a
+  // sphere the radius at the equator has been taken)
+  static constexpr double circumference = 40075 * 1000;  // * 1000 to convert to meters
+  // radius of the earth in meters (as the earth is not exactly a sphere the
+  // radius at the equator has been taken)
+  static constexpr double radius = 6378 * 1000;  // * 1000 to convert to meters
 };
