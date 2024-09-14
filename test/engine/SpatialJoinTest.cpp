@@ -1869,10 +1869,6 @@ inline void testBoundingBox(const long long& maxDistInMeters, const point& start
         std::string strp1 = convertToStr(point1);
         std::string strp2 = convertToStr(startPoint);
         double dist = ad_utility::detail::wktDistImpl(strp1, strp2) * 1000;
-        if (dist <= maxDistInMeters) {
-          std::cerr << "ERR p1" << point1.get<0>() << " " << point1.get<1>() <<
-                " p2 " << startPoint.get<0>() << " " << startPoint.get<1>() << std::endl;
-        }
         ASSERT_GT(dist, maxDistInMeters);
       }
   };
@@ -1897,10 +1893,12 @@ inline void testBoundingBox(const long long& maxDistInMeters, const point& start
   };
 
   // build dummy join to access the containedInBoundingBox and computeBoundingBox
-  // functions
+  // functions. Note that maxDistInMeters has to be accurate, otherwise the
+  // functions of spatialJoin don't work correctly
+  auto maxDistInMetersStr = "<max-distance-in-meters:" + std::to_string(maxDistInMeters) + ">";
   auto qec = localTestHelpers::buildTestQEC();
   auto spatialJoinTriple = SparqlTriple{TripleComponent{Variable{"?point1"}},
-                                        "<max-distance-in-meters:1000>",
+                                        maxDistInMetersStr,
                                         TripleComponent{Variable{"?point2"}}};
   std::shared_ptr<QueryExecutionTree> spatialJoinOperation =
         ad_utility::makeExecutionTree<SpatialJoin>(qec, spatialJoinTriple,
@@ -1961,7 +1959,6 @@ TEST(SpatialJoin, computeBoundingBox) {
       // circ / 2 means, that all points on earth are within maxDist km of any
       // starting point
       for (int maxDist = 0; maxDist <= circ / 2.0; maxDist += circ / 36.0) {
-        if (lon > -170 && lon < 170)
         testBoundingBox(maxDist, point(lon, lat));
       }
     }
