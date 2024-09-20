@@ -278,7 +278,7 @@ void SpatialJoin::addResultTableEntry(IdTable* result,
     result->at(resrow, rescol) = ValueId::makeFromInt(distance);
     // rescol isn't used after that in this function, but future updates,
     // which add additional columns, would need to remember to increase
-    // rescol at this place otherwise. If they forget to do this, the
+    // rescol at this place. If they forget to do this, the
     // distance column will be overwritten, the variableToColumnMap will
     // not work and so on
     // rescol += 1;
@@ -430,11 +430,8 @@ Result SpatialJoin::boundingBoxAlgorithm() {
       childRight_->getRootOperation()->getExternallyVisibleVariableColumns();
   ColumnIndex leftJoinCol =
       varColMapLeft[leftChildVariable_].columnIndex_;
-      //varColMapLeft[Variable{"?point1"}].columnIndex_;  // use leftChildVariable again, see line above
   ColumnIndex rightJoinCol =
       varColMapRight[rightChildVariable_].columnIndex_;
-      // varColMapRight[Variable{"?point2"}].columnIndex_;  // use rightChildVariable again, see line above
-  // size_t numColumns = getResultWidth();
   size_t numColumns = childLeft_->getResultWidth() + childRight_->getResultWidth() + 1;
   IdTable result{numColumns, _executionContext->getAllocator()};
 
@@ -460,7 +457,7 @@ Result SpatialJoin::boundingBoxAlgorithm() {
   for (size_t i = 0; i < smallerResult->numRows(); i++) {
     // get point of row i
     ColumnIndex smallerJoinCol = getJoinCol(smallerChild, smallerVariable);
-    std::string pointstr = getPoint(smallerResult, i, smallerJoinCol);  // todo 3 needs to be replaced by col, but i think thats easier when done in the real spatialjoin class
+    std::string pointstr = getPoint(smallerResult, i, smallerJoinCol);
     pointstr = betweenQuotes(pointstr);
     auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
     point p(lng1, lat1);
@@ -469,7 +466,7 @@ Result SpatialJoin::boundingBoxAlgorithm() {
   }
   for (size_t i = 0; i < otherResult->numRows(); i++) {
     ColumnIndex otherJoinCol = getJoinCol(otherChild, otherVariable);
-    std::string pointstr = getPoint(otherResult, i, otherJoinCol);  // todo 3 needs to be replaced by col, but i think thats easier when done in the real spatialjoin class
+    std::string pointstr = getPoint(otherResult, i, otherJoinCol);
     pointstr = betweenQuotes(pointstr);
     auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
     point p(lng1, lat1);
