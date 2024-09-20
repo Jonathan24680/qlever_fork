@@ -487,7 +487,7 @@ Result SpatialJoin::boundingBoxAlgorithm() {
         rowRight = results.at(k).second;
       }
       auto distance = computeDist(resLeft, resRight, rowLeft, rowRight, leftJoinCol, rightJoinCol);
-      if (distance < maxDist_) {
+      if (distance <= maxDist_) {
         addResultTableEntry(&result, resLeft, resRight, rowLeft, rowRight, distance);
       }
     }

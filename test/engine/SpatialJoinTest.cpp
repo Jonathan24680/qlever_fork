@@ -1326,7 +1326,8 @@ void testGetResultWidthOrVariableToColumnMap(bool leftSideBigChild,
                                              bool rightSideBigChild,
                                              bool addLeftChildFirst,
                                              size_t expectedResultWidth,
-                                             bool testVarToColMap = false) {
+                                             bool testVarToColMap = false,
+                                             bool useBaselineAlgorithm = false) {
   auto getChild = [](QueryExecutionContext* qec, bool getBigChild,
                      std::string numberOfChild) {
     std::string obj = absl::StrCat("?obj", numberOfChild);
@@ -1399,6 +1400,7 @@ void testGetResultWidthOrVariableToColumnMap(bool leftSideBigChild,
 
     expectedColumns.push_back({"?distOfTheTwoObjectsAddedInternally", "0"});
 
+    spatialJoin->onlyForTestingSetUseBaselineAlgorithm(useBaselineAlgorithm);
     auto varColMap = spatialJoin->computeVariableToColumnMap();
     auto resultTable = spatialJoin->computeResult(false);
 
@@ -1445,15 +1447,26 @@ TEST(SpatialJoin, getResultWidth) {
   testGetResultWidthOrVariableToColumnMap(false, false, true, 7);
 }
 
-TEST(SpatialJoin, variableToColumnMap) {
-  testGetResultWidthOrVariableToColumnMap(true, true, false, 9, true);
-  testGetResultWidthOrVariableToColumnMap(true, true, true, 9, true);
-  testGetResultWidthOrVariableToColumnMap(true, false, false, 8, true);
-  testGetResultWidthOrVariableToColumnMap(true, false, true, 8, true);
-  testGetResultWidthOrVariableToColumnMap(false, true, false, 8, true);
-  testGetResultWidthOrVariableToColumnMap(false, true, true, 8, true);
-  testGetResultWidthOrVariableToColumnMap(false, false, false, 7, true);
-  testGetResultWidthOrVariableToColumnMap(false, false, true, 7, true);
+TEST(SpatialJoin, variableToColumnMapBaseLineAlgorithm) {
+  testGetResultWidthOrVariableToColumnMap(true, true, false, 9, true, true);
+  testGetResultWidthOrVariableToColumnMap(true, true, true, 9, true, true);
+  testGetResultWidthOrVariableToColumnMap(true, false, false, 8, true, true);
+  testGetResultWidthOrVariableToColumnMap(true, false, true, 8, true, true);
+  testGetResultWidthOrVariableToColumnMap(false, true, false, 8, true, true);
+  testGetResultWidthOrVariableToColumnMap(false, true, true, 8, true, true);
+  testGetResultWidthOrVariableToColumnMap(false, false, false, 7, true, true);
+  testGetResultWidthOrVariableToColumnMap(false, false, true, 7, true, true);
+}
+
+TEST(SpatialJoin, variableToColumnMapBoundingBoxAlgorithm) {
+  testGetResultWidthOrVariableToColumnMap(true, true, false, 9, true, false);
+  testGetResultWidthOrVariableToColumnMap(true, true, true, 9, true, false);
+  testGetResultWidthOrVariableToColumnMap(true, false, false, 8, true, false);
+  testGetResultWidthOrVariableToColumnMap(true, false, true, 8, true, false);
+  testGetResultWidthOrVariableToColumnMap(false, true, false, 8, true, false);
+  testGetResultWidthOrVariableToColumnMap(false, true, true, 8, true, false);
+  testGetResultWidthOrVariableToColumnMap(false, false, false, 7, true, false);
+  testGetResultWidthOrVariableToColumnMap(false, false, true, 7, true, false);
 }
 
 }  // namespace variableColumnMapAndResultWidth
