@@ -429,11 +429,11 @@ Result SpatialJoin::boundingBoxAlgorithm() {
   auto varColMapRight =
       childRight_->getRootOperation()->getExternallyVisibleVariableColumns();
   ColumnIndex leftJoinCol =
-      // varColMapLeft[leftChildVariable_.value()].columnIndex_;
-      varColMapLeft[Variable{"?point1"}].columnIndex_;  // use leftChildVariable again, see line above
+      varColMapLeft[leftChildVariable_].columnIndex_;
+      //varColMapLeft[Variable{"?point1"}].columnIndex_;  // use leftChildVariable again, see line above
   ColumnIndex rightJoinCol =
-      // varColMapRight[rightChildVariable_.value()].columnIndex_;
-      varColMapRight[Variable{"?point2"}].columnIndex_;  // use rightChildVariable again, see line above
+      varColMapRight[rightChildVariable_].columnIndex_;
+      // varColMapRight[Variable{"?point2"}].columnIndex_;  // use rightChildVariable again, see line above
   // size_t numColumns = getResultWidth();
   size_t numColumns = childLeft_->getResultWidth() + childRight_->getResultWidth() + 1;
   IdTable result{numColumns, _executionContext->getAllocator()};
@@ -487,7 +487,7 @@ Result SpatialJoin::boundingBoxAlgorithm() {
         rowRight = results.at(k).second;
       }
       auto distance = computeDist(resLeft, resRight, rowLeft, rowRight, leftJoinCol, rightJoinCol);
-      if (distance < getMaxDist()) {
+      if (distance < maxDist_) {
         addResultTableEntry(&result, resLeft, resRight, rowLeft, rowRight, distance);
       }
     }
