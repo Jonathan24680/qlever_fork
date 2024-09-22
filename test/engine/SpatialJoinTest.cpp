@@ -2110,4 +2110,75 @@ TEST(SpatialJoin, containedInBoundingBoxes) {
 
 }
 
+std::vector<box> computeAntiBoundingBox(const point& startPoint) {
+  // point on the opposite side of the globe
+  point antiPoint(startPoint.get<0>() + 180, startPoint.get<1>() * -1);
+  if (antiPoint.get<0>() > 180) {
+    antiPoint.set<0>(antiPoint.get<1>() - 360);
+  }
+  // for an explanation of the formula see the master thesis, use 2.01 instead
+  // of 2.0 because of rounding inaccuracies in floating point operations
+  double distToAntiPoint = (360 / circumference) * (maxDist_ / 2.01);
+  double upperBound = startPoint.get<1>() + distToAntiPoint;
+  double lowerBound = startPoint.get<1>() - distToAntiPoint;
+  double leftBound = startPoint.get<0>() - distToAntiPoint;
+  double rightBound = startPoint.get<0>() + distToAntiPoint;
+  bool northPoleTouched = false;
+  bool southPoleTouched = false;
+  bool boxCrosses180Longitude = false;  // if the 180 to -180 line is touched
+  // if a pole is crossed, ignore the part after the crossing
+  if (upperBound > 90) {
+    upperBound = 90;
+    northPoleTouched = true;
+  }
+  if (lowerBound < -90) {
+    lowerBound = -90;
+    southPoleTouched = true;
+  }
+  if (leftBound < -180) {
+    leftBound += 360;
+  }
+  if (rightBound > 180) {
+    rightBound -= 360;
+  }
+  if (rightBound < leftBound) {
+    boxCrosses180Longitude = true;
+  }
+  // compute bounding boxes using the anti bounding box from above
+  std::vector<box> boxes;
+  if (!northPoleTouched) {
+    // add upper bounding box(es)
+    if (boxCrosses180Longitude) {
+      boxes.push_back(box(point(leftBound, upperBound), point(180, 90)));
+      boxes.push_back(box(point(-180, upperBound), point(rightBound, 90)));
+    } else {
+      boxes.push_back(box(point(leftBound, upperBound), point(rightBound, 90)));
+    }
+  }
+  if (!southPoleTouched) {
+    // add lower bounding box(es)
+    if (boxCrosses180Longitude) {
+      boxes.push_back(box(point(leftBound, -90), point(180, lowerBound)));
+      boxes.push_back(box(point(-180, -90), point(rightBound, lowerBound)));
+    } else {
+      boxes.push_back(box(point(leftBound, -90), point(rightBound, lowerBound)));
+    }
+  }
+  // add the box(es) inbetween the longitude lines
+  if (boxCrosses180Longitude) {
+    // only one box needed to cover the longitudes
+    boxes.push_back(box(point(rightBound, -90), point(leftBound, 90)));
+  } else {
+    // two boxes needed, one left and one right of the anti bounding box
+    boxes.push_back(box(point(-180, -90), point(leftBound, 90)));
+    boxes.push_back(box(point(rightBound, -90), point(180, 90)));
+  }
+  return boxes;
+}
+
+TEST(SpatialJoin, AntiBoundingBox) {
+  computeAntiBoundingBox(point());
+  ASSERT_TRUE(false);
+}
+
 }  // namespace boundingBox
