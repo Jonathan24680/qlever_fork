@@ -343,9 +343,15 @@ std::vector<box> SpatialJoin::computeBoundingBox(const point& startPoint) {
     maxDistInMetersBuffer = std::numeric_limits<long long>::max();
   }
   
+  // for large distances, where the lower calculation would just result in
+  // a single bounding box for the whole planet, do an optimized version
+  if (maxDist_ > circumferenceMax_ / 4.0 && maxDist_ < circumferenceMax_ / 2.01) {
+    return computeAntiBoundingBox(startPoint);
+  }
+
   // compute latitude bound
-  double upperLatBound = startPoint.get<1>() + maxDistInMetersBuffer * (360 / circumference);
-  double lowerLatBound = startPoint.get<1>() - maxDistInMetersBuffer * (360 / circumference);
+  double upperLatBound = startPoint.get<1>() + maxDistInMetersBuffer * (360 / circumferenceMax_);
+  double lowerLatBound = startPoint.get<1>() - maxDistInMetersBuffer * (360 / circumferenceMax_);
   bool poleReached = false;
   // test for "overflows"
   if (lowerLatBound <= -90) {
@@ -362,11 +368,11 @@ std::vector<box> SpatialJoin::computeBoundingBox(const point& startPoint) {
 
   // compute longitude bound. For an explanation of the calculation and the
   // naming convention see my master thesis
-  double alpha = maxDistInMetersBuffer / radius;
+  double alpha = maxDistInMetersBuffer / radius_;
   double gamma = (90 - std::abs(startPoint.get<1>())) * (2 * std::numbers::pi / 360);
   double beta = std::acos((std::cos(gamma) / std::cos(alpha)));
   double delta = 0;
-  if (maxDistInMetersBuffer > circumference / 20) {
+  if (maxDistInMetersBuffer > circumferenceMax_ / 20) {
     // use law of cosines
     delta = std::acos((std::cos(alpha) - std::cos(gamma) * std::cos(beta))
                                 / (std::sin(gamma) * std::sin(beta)));
@@ -394,6 +400,77 @@ std::vector<box> SpatialJoin::computeBoundingBox(const point& startPoint) {
   // default case, when no bound has an "overflow"
   return {box(point(leftLonBound, lowerLatBound),
               point(rightLonBound, upperLatBound))};
+}
+
+// ____________________________________________________________________________
+std::vector<box> SpatialJoin::computeAntiBoundingBox(const point& startPoint) {
+  // point on the opposite side of the globe
+  point antiPoint(startPoint.get<0>() + 180, startPoint.get<1>() * -1);
+  if (antiPoint.get<0>() > 180) {
+    antiPoint.set<0>(antiPoint.get<0>() - 360);
+  }
+  // for an explanation of the formula see the master thesis. Divide by two two
+  // only consider the distance from the point to the antiPoint, subtract maxDist_
+  // and a safety margine from that
+  double antiDist = (circumferenceMin_ / 2.0) - maxDist_ * 1.01;  // safety margin
+  // use the bigger circumference as an additional safety margin, use 2.01 instead
+  // of 2.0 because of rounding inaccuracies in floating point operations
+  double distToAntiPoint = (360 / circumferenceMax_) * (antiDist / 2.01);
+  double upperBound = antiPoint.get<1>() + distToAntiPoint;
+  double lowerBound = antiPoint.get<1>() - distToAntiPoint;
+  double leftBound = antiPoint.get<0>() - distToAntiPoint;
+  double rightBound = antiPoint.get<0>() + distToAntiPoint;
+  bool northPoleTouched = false;
+  bool southPoleTouched = false;
+  bool boxCrosses180Longitude = false;  // if the 180 to -180 line is touched
+  // if a pole is crossed, ignore the part after the crossing
+  if (upperBound > 90) {
+    upperBound = 90;
+    northPoleTouched = true;
+  }
+  if (lowerBound < -90) {
+    lowerBound = -90;
+    southPoleTouched = true;
+  }
+  if (leftBound < -180) {
+    leftBound += 360;
+  }
+  if (rightBound > 180) {
+    rightBound -= 360;
+  }
+  if (rightBound < leftBound) {
+    boxCrosses180Longitude = true;
+  }
+  // compute bounding boxes using the anti bounding box from above
+  std::vector<box> boxes;
+  if (!northPoleTouched) {
+    // add upper bounding box(es)
+    if (boxCrosses180Longitude) {
+      boxes.push_back(box(point(leftBound, upperBound), point(180, 90)));
+      boxes.push_back(box(point(-180, upperBound), point(rightBound, 90)));
+    } else {
+      boxes.push_back(box(point(leftBound, upperBound), point(rightBound, 90)));
+    }
+  }
+  if (!southPoleTouched) {
+    // add lower bounding box(es)
+    if (boxCrosses180Longitude) {
+      boxes.push_back(box(point(leftBound, -90), point(180, lowerBound)));
+      boxes.push_back(box(point(-180, -90), point(rightBound, lowerBound)));
+    } else {
+      boxes.push_back(box(point(leftBound, -90), point(rightBound, lowerBound)));
+    }
+  }
+  // add the box(es) inbetween the longitude lines
+  if (boxCrosses180Longitude) {
+    // only one box needed to cover the longitudes
+    boxes.push_back(box(point(rightBound, -90), point(leftBound, 90)));
+  } else {
+    // two boxes needed, one left and one right of the anti bounding box
+    boxes.push_back(box(point(-180, -90), point(leftBound, 90)));
+    boxes.push_back(box(point(rightBound, -90), point(180, 90)));
+  }
+  return boxes;
 }
 
 // ____________________________________________________________________________

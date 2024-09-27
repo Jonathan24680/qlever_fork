@@ -1918,7 +1918,7 @@ inline void testBoundingBox(const long long& maxDistInMeters, const point& start
         std::string strp1 = convertToStr(point1);
         std::string strp2 = convertToStr(startPoint);
         double dist = ad_utility::detail::wktDistImpl(strp1, strp2) * 1000;
-        ASSERT_GT(dist, maxDistInMeters);
+        ASSERT_GT(static_cast<long long>(dist), maxDistInMeters);
       }
   };
 
@@ -2000,6 +2000,7 @@ inline void testBoundingBox(const long long& maxDistInMeters, const point& start
 }
 
 TEST(SpatialJoin, computeBoundingBox) {
+  //ASSERT_EQ("", "uncomment the part below again");
   double circ = 40075 * 1000;  // circumference of the earth (at the equator)
   // 180.0001 in case 180 is represented internally as 180.0000000001
   for (double lon = -180; lon <= 180.0001; lon += 15) {
@@ -2025,8 +2026,6 @@ TEST(SpatialJoin, containedInBoundingBoxes) {
         ad_utility::makeExecutionTree<SpatialJoin>(qec, spatialJoinTriple,
                                                    std::nullopt, std::nullopt);
 
-  // add children and test, that multiplicity is a dummy return before all
-  // children are added
   std::shared_ptr<Operation> op = spatialJoinOperation->getRootOperation();
   SpatialJoin* spatialJoin = static_cast<SpatialJoin*>(op.get());
 
@@ -2041,8 +2040,11 @@ TEST(SpatialJoin, containedInBoundingBoxes) {
     box(point(-45, -90), point(0, -45))  // touching south pole
   };
   
+  // the first entry in this vector is a vector of points, which is contained
+  // in the first box, the second entry contains points, which are contained in
+  // the second box and so on
   std::vector<std::vector<point>> containedInBox = {
-    {point(20, 40), point(40, 40), point(40, 60), point(20, 60), point(30, 50)},
+    {point(20, 40), point(40, 40), point(40, 60), point(20, 60), point(30, 50)}, 
     {point(-180, -20), point(-150, -20), point(-150, 30), point(-180, 30), point(-150, 0)},
     {point(50, -30), point(180, -30), point(180, 10), point(50, 10), point(70, -10)},
     {point(-30, 50), point(10, 50), point(10, 90), point(-30, 90), point(-20, 60)},
@@ -2051,25 +2053,28 @@ TEST(SpatialJoin, containedInBoundingBoxes) {
 
   // all combinations of box is contained in bounding boxes and is not contained.
   // a one encodes, the bounding box is contained in the set of bounding boxes, 
-  // a zero encodes, it isn't
+  // a zero encodes, it isn't. If a box is contained, it's checked, that the points
+  // which should be contained in the box are contained. If the box is not
+  // contained, it's checked, that the points which are contained in that box are
+  // not contained in the box set (because the boxes don't overlap)
   for (size_t a = 0; a <= 1; a++) {
     for (size_t b = 0; a <= 1; a++) {
       for (size_t c = 0; a <= 1; a++) {
         for (size_t d = 0; a <= 1; a++) {
           for (size_t e = 0; a <= 1; a++) {
-            std::vector<box> toTest;
+            std::vector<box> toTest;  // the set of bounding boxes
             std::vector<std::vector<point>> shouldBeContained;
             std::vector<std::vector<point>> shouldNotBeContained;
-            if (a == 1) {
+            if (a == 1) {  // box nr. 0 is contained in the set of boxes
               toTest.push_back(boxes.at(0));
               shouldBeContained.push_back(containedInBox.at(0));
-            } else {
+            } else {  // box nr. 0 is not contained in the set of boxes
               shouldNotBeContained.push_back(containedInBox.at(0));
             }
-            if (b == 1) {
+            if (b == 1) {  // box nr. 1 is contained in the set of boxes
               toTest.push_back(boxes.at(1));
               shouldBeContained.push_back(containedInBox.at(1));
-            } else {
+            } else {  // box nr. 1 is not contained in the set of boxes
               shouldNotBeContained.push_back(containedInBox.at(1));
             }
             if (c == 1) {
@@ -2091,11 +2096,13 @@ TEST(SpatialJoin, containedInBoundingBoxes) {
               shouldNotBeContained.push_back(containedInBox.at(4));
             }
             if (toTest.size() > 0) {
+              // test all points, which should be contained in the bounding boxes
               for (size_t i = 0; i < shouldBeContained.size(); i++) {
                 for (size_t k = 0; k < shouldBeContained.at(i).size(); k++) {
                   ASSERT_TRUE(spatialJoin->containedInBoundingBoxes(toTest, shouldBeContained.at(i).at(k)));
                 }
               }
+              // test all points, which shouldn't be contained in the bounding boxes
               for (size_t i = 0; i < shouldNotBeContained.size(); i++) {
                 for (size_t k = 0; k < shouldNotBeContained.at(i).size(); k++) {
                   ASSERT_FALSE(spatialJoin->containedInBoundingBoxes(toTest, shouldNotBeContained.at(i).at(k)));
@@ -2108,77 +2115,6 @@ TEST(SpatialJoin, containedInBoundingBoxes) {
     }
   }
 
-}
-
-std::vector<box> computeAntiBoundingBox(const point& startPoint) {
-  // point on the opposite side of the globe
-  point antiPoint(startPoint.get<0>() + 180, startPoint.get<1>() * -1);
-  if (antiPoint.get<0>() > 180) {
-    antiPoint.set<0>(antiPoint.get<1>() - 360);
-  }
-  // for an explanation of the formula see the master thesis, use 2.01 instead
-  // of 2.0 because of rounding inaccuracies in floating point operations
-  double distToAntiPoint = (360 / circumference) * (maxDist_ / 2.01);
-  double upperBound = startPoint.get<1>() + distToAntiPoint;
-  double lowerBound = startPoint.get<1>() - distToAntiPoint;
-  double leftBound = startPoint.get<0>() - distToAntiPoint;
-  double rightBound = startPoint.get<0>() + distToAntiPoint;
-  bool northPoleTouched = false;
-  bool southPoleTouched = false;
-  bool boxCrosses180Longitude = false;  // if the 180 to -180 line is touched
-  // if a pole is crossed, ignore the part after the crossing
-  if (upperBound > 90) {
-    upperBound = 90;
-    northPoleTouched = true;
-  }
-  if (lowerBound < -90) {
-    lowerBound = -90;
-    southPoleTouched = true;
-  }
-  if (leftBound < -180) {
-    leftBound += 360;
-  }
-  if (rightBound > 180) {
-    rightBound -= 360;
-  }
-  if (rightBound < leftBound) {
-    boxCrosses180Longitude = true;
-  }
-  // compute bounding boxes using the anti bounding box from above
-  std::vector<box> boxes;
-  if (!northPoleTouched) {
-    // add upper bounding box(es)
-    if (boxCrosses180Longitude) {
-      boxes.push_back(box(point(leftBound, upperBound), point(180, 90)));
-      boxes.push_back(box(point(-180, upperBound), point(rightBound, 90)));
-    } else {
-      boxes.push_back(box(point(leftBound, upperBound), point(rightBound, 90)));
-    }
-  }
-  if (!southPoleTouched) {
-    // add lower bounding box(es)
-    if (boxCrosses180Longitude) {
-      boxes.push_back(box(point(leftBound, -90), point(180, lowerBound)));
-      boxes.push_back(box(point(-180, -90), point(rightBound, lowerBound)));
-    } else {
-      boxes.push_back(box(point(leftBound, -90), point(rightBound, lowerBound)));
-    }
-  }
-  // add the box(es) inbetween the longitude lines
-  if (boxCrosses180Longitude) {
-    // only one box needed to cover the longitudes
-    boxes.push_back(box(point(rightBound, -90), point(leftBound, 90)));
-  } else {
-    // two boxes needed, one left and one right of the anti bounding box
-    boxes.push_back(box(point(-180, -90), point(leftBound, 90)));
-    boxes.push_back(box(point(rightBound, -90), point(180, 90)));
-  }
-  return boxes;
-}
-
-TEST(SpatialJoin, AntiBoundingBox) {
-  computeAntiBoundingBox(point());
-  ASSERT_TRUE(false);
 }
 
 }  // namespace boundingBox

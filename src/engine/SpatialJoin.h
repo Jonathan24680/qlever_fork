@@ -131,6 +131,12 @@ class SpatialJoin : public Operation {
                            const IdTable* resultRight, size_t rowLeft,
                            size_t rowRight, long long distance) const;
 
+  // this helper function calculates the bounding boxes based on a box, where
+  // definetly no match can occur. This function gets used, when the usual
+  // procedure, would just result in taking a big bounding box, which covers
+  // the whole planet (so for large max distances)
+  std::vector<box> computeAntiBoundingBox(const point& startPoint);
+
   // the baseline algorithm, which just checks every combination
   Result baselineAlgorithm();
 
@@ -149,10 +155,11 @@ class SpatialJoin : public Operation {
   bool addDistToResult_ = true;
   const string nameDistanceInternal_ = "?distOfTheTwoObjectsAddedInternally";
   bool useBaselineAlgorithm_ = false;
-  // circumference in meters at the equator (as the earth is not exactly a
-  // sphere the radius at the equator has been taken)
-  static constexpr double circumference = 40075 * 1000;  // * 1000 to convert to meters
+  // circumference in meters at the equator (max) and the pole (min) (as the earth is not exactly a
+  // sphere the circumference is different. Note the factor of 1000 to convert to meters)
+  static constexpr double circumferenceMax_ = 40075 * 1000;
+  static constexpr double circumferenceMin_ = 40007 * 1000;
   // radius of the earth in meters (as the earth is not exactly a sphere the
   // radius at the equator has been taken)
-  static constexpr double radius = 6378 * 1000;  // * 1000 to convert to meters
+  static constexpr double radius_ = 6378 * 1000;  // * 1000 to convert to meters
 };
