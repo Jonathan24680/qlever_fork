@@ -530,6 +530,8 @@ Result SpatialJoin::boundingBoxAlgorithm() {
     otherVariable = leftChildVariable_;
   }
 
+  // Todo in the benchmark: use different algorithms and compare their
+  // performance
   bgi::rtree<value, bgi::quadratic<16>> rtree;
   for (size_t i = 0; i < smallerResult->numRows(); i++) {
     // get point of row i
