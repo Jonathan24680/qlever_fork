@@ -117,25 +117,28 @@ class SpatialJoin : public Operation {
   ColumnIndex getJoinCol(const std::shared_ptr<const QueryExecutionTree>& child,
                        const Variable& childVariable);
 
-  // helper function, which computes the distance of two points, where each
-  // point comes from a different result table
-  long long computeDist(const IdTable* resLeft, const IdTable* resRight,
-                        size_t rowLeft, size_t rowRight,
-                        ColumnIndex leftPointCol,
-                        ColumnIndex rightPointCol) const;
-
-  // helper function, which adds row, which belongs to the result to the result
-  // table. As input it uses a row of the left and a row of the right child
-  // result table
-  void addResultTableEntry(IdTable* result, const IdTable* resultLeft,
-                           const IdTable* resultRight, size_t rowLeft,
-                           size_t rowRight, long long distance) const;
-
   // this helper function calculates the bounding boxes based on a box, where
   // definetly no match can occur. This function gets used, when the usual
   // procedure, would just result in taking a big bounding box, which covers
   // the whole planet (so for large max distances)
   std::vector<box> computeAntiBoundingBox(const point& startPoint);
+
+  // helper function, which gets the point of an id table
+  std::optional<GeoPoint> getPoint(const IdTable* restable, size_t row,
+                      ColumnIndex col);
+
+  // helper function, which computes the distance of two points, where each
+  // point comes from a different result table
+  Id computeDist(const IdTable* resLeft, const IdTable* resRight,
+                 size_t rowLeft, size_t rowRight, ColumnIndex leftPointCol,
+                 ColumnIndex rightPointCol) const;
+
+  // Helper function, which adds a row, which belongs to the result to the
+  // result table. As inputs it uses a row of the left and a row of the right
+  // child result table.
+  void addResultTableEntry(IdTable* result, const IdTable* resultLeft,
+                           const IdTable* resultRight, size_t rowLeft,
+                           size_t rowRight, Id distance) const;
 
   // the baseline algorithm, which just checks every combination
   Result baselineAlgorithm();

@@ -31,6 +31,7 @@
 #include "util/AllocatorTestHelpers.h"
 #include "util/SourceLocation.h"
 
+namespace {
 using namespace sparqlParserHelpers;
 namespace m = matchers;
 using Parser = SparqlAutomaticParser;
@@ -39,6 +40,10 @@ using Var = Variable;
 auto iri = ad_utility::testing::iri;
 
 auto lit = ad_utility::testing::tripleComponentLiteral;
+
+const ad_utility::HashMap<std::string, std::string> defaultPrefixMap{
+    {std::string{INTERNAL_PREDICATE_PREFIX_NAME},
+     std::string{INTERNAL_PREDICATE_PREFIX_IRI}}};
 
 template <auto F, bool testInsideConstructTemplate = false>
 auto parse =
@@ -146,6 +151,7 @@ using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::SizeIs;
 using ::testing::StrEq;
+}  // namespace
 
 TEST(SparqlParser, NumericLiterals) {
   auto expectNumericLiteral = ExpectCompleteParse<&Parser::numericLiteral>{};
@@ -869,8 +875,8 @@ TEST(SparqlParser, HavingCondition) {
 }
 
 TEST(SparqlParser, GroupGraphPattern) {
-  auto expectGraphPattern = ExpectCompleteParse<&Parser::groupGraphPattern>{
-      {{INTERNAL_PREDICATE_PREFIX_NAME, INTERNAL_PREDICATE_PREFIX_IRI}}};
+  auto expectGraphPattern =
+      ExpectCompleteParse<&Parser::groupGraphPattern>{defaultPrefixMap};
   auto expectGroupGraphPatternFails =
       ExpectParseFails<&Parser::groupGraphPattern>{{}};
   auto DummyTriplesMatcher = m::Triples({{Var{"?x"}, "?y", Var{"?z"}}});
@@ -941,8 +947,9 @@ TEST(SparqlParser, GroupGraphPattern) {
           m::Triples(
               {{Var{"?x"}, "<is-a>", lit("\"Actor\"")},
                {Var{"?y"}, "<is-a>", iri("<Actor>")},
-               {Var{"?c"}, CONTAINS_ENTITY_PREDICATE, Var{"?x"}},
-               {Var{"?c"}, CONTAINS_WORD_PREDICATE, lit("\"coca* abuse\"")}})));
+               {Var{"?c"}, std::string{CONTAINS_ENTITY_PREDICATE}, Var{"?x"}},
+               {Var{"?c"}, std::string{CONTAINS_WORD_PREDICATE},
+                lit("\"coca* abuse\"")}})));
 
   // Scoping of variables in combination with a BIND clause.
   expectGraphPattern(
@@ -986,20 +993,31 @@ TEST(SparqlParser, GroupGraphPattern) {
           m::InlineData({Var{"?a"}}, {{iri("<a>")}, {iri("<b>")}})));
   expectGraphPattern("{ SERVICE <endpoint> { ?s ?p ?o } }",
                      m::GraphPattern(m::Service(
-                         Iri{"<endpoint>"}, {Var{"?s"}, Var{"?p"}, Var{"?o"}},
-                         "{ ?s ?p ?o }")));
+                         TripleComponent::Iri::fromIriref("<endpoint>"),
+                         {Var{"?s"}, Var{"?p"}, Var{"?o"}}, "{ ?s ?p ?o }")));
   expectGraphPattern(
       "{ SERVICE <ep> { { SELECT ?s ?o WHERE { ?s ?p ?o } } } }",
-      m::GraphPattern(m::Service(Iri{"<ep>"}, {Var{"?s"}, Var{"?o"}},
+      m::GraphPattern(m::Service(TripleComponent::Iri::fromIriref("<ep>"),
+                                 {Var{"?s"}, Var{"?o"}},
                                  "{ { SELECT ?s ?o WHERE { ?s ?p ?o } } }")));
 
-  // SERVICE with SILENT or a variable endpoint is not yet supported.
-  expectGroupGraphPatternFails("{ SERVICE SILENT <ep> { ?s ?p ?o } }");
+  expectGraphPattern(
+      "{ SERVICE SILENT <ep> { { SELECT ?s ?o WHERE { ?s ?p ?o } } } }",
+      m::GraphPattern(m::Service(
+          TripleComponent::Iri::fromIriref("<ep>"), {Var{"?s"}, Var{"?o"}},
+          "{ { SELECT ?s ?o WHERE { ?s ?p ?o } } }", "", true)));
+
+  // SERVICE with a variable endpoint is not yet supported.
   expectGroupGraphPatternFails("{ SERVICE ?endpoint { ?s ?p ?o } }");
 
-  // graphGraphPattern is not supported.
-  expectGroupGraphPatternFails("{ GRAPH ?a { } }");
-  expectGroupGraphPatternFails("{ GRAPH <foo> { } }");
+  expectGraphPattern("{ GRAPH ?g { ?x <is-a> <Actor> }}",
+                     m::GraphPattern(m::GroupGraphPatternWithGraph(
+                         Variable("?g"),
+                         m::Triples({{Var{"?x"}, "<is-a>", iri("<Actor>")}}))));
+  expectGraphPattern(
+      "{ GRAPH <foo> { ?x <is-a> <Actor> }}",
+      m::GraphPattern(m::GroupGraphPatternWithGraph(
+          iri("<foo>"), m::Triples({{Var{"?x"}, "<is-a>", iri("<Actor>")}}))));
 }
 
 TEST(SparqlParser, RDFLiteral) {
@@ -1011,7 +1029,7 @@ TEST(SparqlParser, RDFLiteral) {
                    "\"Astronaut\"^^<http://www.w3.org/2001/XMLSchema#string>"s);
   // The conversion to the internal date format
   // (":v:date:0000000000000001950-01-01T00:00:00") is done by
-  // TurtleStringParser<TokenizerCtre>::parseTripleObject(resultAsString) which
+  // RdfStringParser<TokenizerCtre>::parseTripleObject(resultAsString) which
   // is only called at triplesBlock.
   expectRDFLiteral(
       "\"1950-01-01T00:00:00\"^^xsd:dateTime",
@@ -1021,16 +1039,33 @@ TEST(SparqlParser, RDFLiteral) {
 
 TEST(SparqlParser, SelectQuery) {
   auto contains = [](const std::string& s) { return ::testing::HasSubstr(s); };
-  auto expectSelectQuery = ExpectCompleteParse<&Parser::selectQuery>{
-      {{INTERNAL_PREDICATE_PREFIX_NAME, INTERNAL_PREDICATE_PREFIX_IRI}}};
+  auto expectSelectQuery =
+      ExpectCompleteParse<&Parser::selectQuery>{defaultPrefixMap};
   auto expectSelectQueryFails = ExpectParseFails<&Parser::selectQuery>{};
   auto DummyGraphPatternMatcher =
       m::GraphPattern(m::Triples({{Var{"?x"}, "?y", Var{"?z"}}}));
-  expectSelectQuery(
-      "SELECT * WHERE { ?a <bar> ?foo }",
-      testing::AllOf(m::SelectQuery(
-          m::AsteriskSelect(),
-          m::GraphPattern(m::Triples({{Var{"?a"}, "<bar>", Var{"?foo"}}})))));
+  using Graphs = ScanSpecificationAsTripleComponent::Graphs;
+
+  // A matcher that matches the query `SELECT * { ?a <bar> ?foo}`, where the
+  // FROM and FROM NAMED clauses can still be specified via arguments.
+  auto selectABarFooMatcher = [](Graphs defaultGraphs = std::nullopt,
+                                 Graphs namedGraphs = std::nullopt) {
+    return testing::AllOf(m::SelectQuery(
+        m::AsteriskSelect(),
+        m::GraphPattern(m::Triples({{Var{"?a"}, "<bar>", Var{"?foo"}}})),
+        defaultGraphs, namedGraphs));
+  };
+  expectSelectQuery("SELECT * WHERE { ?a <bar> ?foo }", selectABarFooMatcher());
+
+  Graphs defaultGraphs;
+  defaultGraphs.emplace();
+  defaultGraphs->insert(TripleComponent::Iri::fromIriref("<x>"));
+  Graphs namedGraphs;
+  namedGraphs.emplace();
+  namedGraphs->insert(TripleComponent::Iri::fromIriref("<y>"));
+  expectSelectQuery("SELECT * FROM <x> FROM NAMED <y> WHERE { ?a <bar> ?foo }",
+                    selectABarFooMatcher(defaultGraphs, namedGraphs));
+
   expectSelectQuery("SELECT * WHERE { ?x ?y ?z }",
                     testing::AllOf(m::SelectQuery(m::AsteriskSelect(),
                                                   DummyGraphPatternMatcher)));
@@ -1167,16 +1202,12 @@ TEST(SparqlParser, SelectQuery) {
       "SELECT (?x AS ?y) WHERE { ?x <is-a> ?y }",
       contains(
           "The target ?y of an AS clause was already used in the query body."));
-
-  // Datasets are not supported.
-  expectSelectQueryFails("SELECT * FROM <defaultDataset> WHERE { ?x ?y ?z }",
-                         contains("FROM clauses are currently not supported"));
 }
 
 TEST(SparqlParser, ConstructQuery) {
   auto contains = [](const std::string& s) { return ::testing::HasSubstr(s); };
-  auto expectConstructQuery = ExpectCompleteParse<&Parser::constructQuery>{
-      {{INTERNAL_PREDICATE_PREFIX_NAME, INTERNAL_PREDICATE_PREFIX_IRI}}};
+  auto expectConstructQuery =
+      ExpectCompleteParse<&Parser::constructQuery>{defaultPrefixMap};
   auto expectConstructQueryFails = ExpectParseFails<&Parser::constructQuery>{};
   expectConstructQuery(
       "CONSTRUCT { } WHERE { ?a ?b ?c }",
@@ -1207,14 +1238,12 @@ TEST(SparqlParser, ConstructQuery) {
   expectConstructQuery("CONSTRUCT WHERE { ?a <foo> ?b }",
                        m::ConstructQuery({{Var{"?a"}, Iri{"<foo>"}, Var{"?b"}}},
                                          m::GraphPattern()));
-  // Datasets are not supported.
-  expectConstructQueryFails(
-      "CONSTRUCT { } FROM <foo> WHERE { ?a ?b ?c }",
-      contains("FROM clauses are currently not supported by QLever."));
-  expectConstructQueryFails(
-      "CONSTRUCT FROM <foo> WHERE { }",
-      contains("FROM clauses are currently not supported by QLever."));
-
+  // CONSTRUCT with datasets.
+  using Graphs = ad_utility::HashSet<TripleComponent>;
+  expectConstructQuery(
+      "CONSTRUCT { } FROM <foo> FROM NAMED <foo2> FROM NAMED <foo3> WHERE { }",
+      m::ConstructQuery({}, m::GraphPattern(), Graphs{iri("<foo>")},
+                        Graphs{iri("<foo2>"), iri("<foo3>")}));
   // GROUP BY and ORDER BY, but the ordered variable is not grouped
   expectConstructQueryFails(
       "CONSTRUCT {?a <b> <c> } WHERE { ?a ?b ?c } GROUP BY ?a ORDER BY ?b",
@@ -1223,8 +1252,7 @@ TEST(SparqlParser, ConstructQuery) {
 }
 
 TEST(SparqlParser, Query) {
-  auto expectQuery = ExpectCompleteParse<&Parser::query>{
-      {{INTERNAL_PREDICATE_PREFIX_NAME, INTERNAL_PREDICATE_PREFIX_IRI}}};
+  auto expectQuery = ExpectCompleteParse<&Parser::query>{defaultPrefixMap};
   auto expectQueryFails = ExpectParseFails<&Parser::query>{};
   // Test that `_originalString` is correctly set.
   expectQuery(
@@ -1282,8 +1310,9 @@ TEST(SparqlParser, Query) {
       "SELECT * WHERE { SERVICE <endpoint> { ?s ?p ?o } }",
       m::SelectQuery(m::AsteriskSelect(),
                      m::GraphPattern(m::Service(
-                         Iri{"<endpoint>"}, {Var{"?s"}, Var{"?p"}, Var{"?o"}},
-                         "{ ?s ?p ?o }", "PREFIX doof: <http://doof.org/>"))));
+                         TripleComponent::Iri::fromIriref("<endpoint>"),
+                         {Var{"?s"}, Var{"?p"}, Var{"?o"}}, "{ ?s ?p ?o }",
+                         "PREFIX doof: <http://doof.org/>"))));
 
   // Describe and Ask Queries are not supported.
   expectQueryFails("DESCRIBE *");
@@ -1425,6 +1454,7 @@ TEST(SparqlParser, builtInCall) {
   expectBuiltInCall("floor(?x)", matchUnary(&makeFloorExpression));
   expectBuiltInCall("round(?x)", matchUnary(&makeRoundExpression));
   expectBuiltInCall("ISIRI(?x)", matchUnary(&makeIsIriExpression));
+  expectBuiltInCall("ISUri(?x)", matchUnary(&makeIsIriExpression));
   expectBuiltInCall("ISBLANK(?x)", matchUnary(&makeIsBlankExpression));
   expectBuiltInCall("ISLITERAL(?x)", matchUnary(&makeIsLiteralExpression));
   expectBuiltInCall("ISNUMERIC(?x)", matchUnary(&makeIsNumericExpression));
@@ -1724,8 +1754,10 @@ template <typename AggregateExpr>
       return ::testing::_;
     }
   }();
+  using enum SparqlExpression::AggregateStatus;
+  auto aggregateStatus = distinct ? DistinctAggregate : NonDistinctAggregate;
   return Pointee(AllOf(
-      AD_PROPERTY(Exp, isDistinct, Eq(distinct)),
+      AD_PROPERTY(Exp, isAggregate, Eq(aggregateStatus)),
       AD_PROPERTY(Exp, children, ElementsAre(variableExpressionMatcher(child))),
       WhenDynamicCastTo<const AggregateExpr&>(innerMatcher)));
 }
@@ -1752,8 +1784,10 @@ TEST(SparqlParser, aggregateExpressions) {
       [&typeIdLambda, typeIdxCountStar](
           bool distinct) -> ::testing::Matcher<const SparqlExpression::Ptr&> {
     using namespace ::testing;
+    using enum SparqlExpression::AggregateStatus;
+    auto aggregateStatus = distinct ? DistinctAggregate : NonDistinctAggregate;
     return Pointee(
-        AllOf(AD_PROPERTY(SparqlExpression, isDistinct, Eq(distinct)),
+        AllOf(AD_PROPERTY(SparqlExpression, isAggregate, Eq(aggregateStatus)),
               ResultOf(typeIdLambda, Eq(typeIdxCountStar))));
   };
 
@@ -1761,7 +1795,10 @@ TEST(SparqlParser, aggregateExpressions) {
   expectAggregate("COUNT(DISTINCT *)", matchCountStar(true));
 
   expectAggregate("SAMPLE(?x)",
-                  matchPtrWithVariables<SampleExpression>(V{"?x"}));
+                  matchAggregate<SampleExpression>(false, V{"?x"}));
+  expectAggregate("SAMPLE(DISTINCT ?x)",
+                  matchAggregate<SampleExpression>(false, V{"?x"}));
+
   expectAggregate("Min(?x)", matchAggregate<MinExpression>(false, V{"?x"}));
   expectAggregate("Min(DISTINCT ?x)",
                   matchAggregate<MinExpression>(true, V{"?x"}));
@@ -1823,14 +1860,13 @@ TEST(SparqlParser, updateQueryUnsupported) {
 }
 
 TEST(SparqlParser, UpdateQuery) {
-  auto expectUpdate = ExpectCompleteParse<&Parser::update>{
-      {{INTERNAL_PREDICATE_PREFIX_NAME, INTERNAL_PREDICATE_PREFIX_IRI}}};
+  auto expectUpdate = ExpectCompleteParse<&Parser::update>{defaultPrefixMap};
   auto expectUpdateFails = ExpectParseFails<&Parser::update>{};
   auto Iri = [](std::string_view stringWithBrackets) {
     return TripleComponent::Iri::fromIriref(stringWithBrackets);
   };
   auto Literal = [](std::string s) {
-    return TripleComponent::Literal::fromStringRepresentation(s);
+    return TripleComponent::Literal::fromStringRepresentation(std::move(s));
   };
 
   expectUpdate("INSERT DATA { <a> <b> <c> }",
@@ -1896,8 +1932,8 @@ TEST(SparqlParser, EmptyQuery) {
 TEST(SparqlParser, GraphOrDefault) {
   // Explicitly test this part, because all features that use it are not yet
   // supported.
-  auto expectGraphOrDefault = ExpectCompleteParse<&Parser::graphOrDefault>{
-      {{INTERNAL_PREDICATE_PREFIX_NAME, INTERNAL_PREDICATE_PREFIX_IRI}}};
+  auto expectGraphOrDefault =
+      ExpectCompleteParse<&Parser::graphOrDefault>{defaultPrefixMap};
   expectGraphOrDefault("DEFAULT", testing::VariantWith<DEFAULT>(testing::_));
   expectGraphOrDefault(
       "GRAPH <foo>",
@@ -1906,10 +1942,23 @@ TEST(SparqlParser, GraphOrDefault) {
 }
 
 TEST(SparqlParser, GraphRef) {
-  auto expectGraphRefAll = ExpectCompleteParse<&Parser::graphRefAll>{
-      {{INTERNAL_PREDICATE_PREFIX_NAME, INTERNAL_PREDICATE_PREFIX_IRI}}};
+  auto expectGraphRefAll =
+      ExpectCompleteParse<&Parser::graphRefAll>{defaultPrefixMap};
   expectGraphRefAll("DEFAULT", m::Variant<DEFAULT>());
   expectGraphRefAll("NAMED", m::Variant<NAMED>());
   expectGraphRefAll("ALL", m::Variant<ALL>());
   expectGraphRefAll("GRAPH <foo>", m::GraphRefIri("<foo>"));
+}
+
+TEST(SparqlParser, SourceSelector) {
+  // This will be implemented soon, but for now we test the failure for the
+  // coverage tool.
+  auto expectSelector = ExpectCompleteParse<&Parser::sourceSelector>{};
+  expectSelector("<x>", m::TripleComponentIri("<x>"));
+
+  auto expectNamedGraph = ExpectCompleteParse<&Parser::namedGraphClause>{};
+  expectNamedGraph("NAMED <x>", m::TripleComponentIri("<x>"));
+
+  auto expectDefaultGraph = ExpectCompleteParse<&Parser::defaultGraphClause>{};
+  expectDefaultGraph("<x>", m::TripleComponentIri("<x>"));
 }

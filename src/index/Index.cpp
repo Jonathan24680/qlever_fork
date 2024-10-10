@@ -20,8 +20,8 @@ Index::Index(Index&&) noexcept = default;
 Index::~Index() = default;
 
 // ____________________________________________________________________________
-void Index::createFromFile(const std::string& filename) {
-  pimpl_->createFromFile(filename);
+void Index::createFromFile(const std::string& filename, Filetype type) {
+  pimpl_->createFromFile(filename, type);
 }
 
 // ____________________________________________________________________________
@@ -75,22 +75,6 @@ std::string Index::indexToString(VocabIndex id) const {
 // ____________________________________________________________________________
 std::string_view Index::indexToString(WordVocabIndex id) const {
   return pimpl_->indexToString(id);
-}
-
-// ____________________________________________________________________________
-std::optional<Id> Index::getId(
-    const ad_utility::triple_component::LiteralOrIri& element) const {
-  return pimpl_->getId(element);
-}
-// ____________________________________________________________________________
-std::optional<Id> Index::getId(
-    const ad_utility::triple_component::Iri& element) const {
-  return pimpl_->getId(element);
-}
-// ____________________________________________________________________________
-std::optional<Id> Index::getId(
-    const ad_utility::triple_component::Literal& element) const {
-  return pimpl_->getId(element);
 }
 
 // ____________________________________________________________________________
@@ -295,8 +279,7 @@ IdTable Index::scan(
 }
 
 // ____________________________________________________________________________
-size_t Index::getResultSizeOfScan(
-    const ScanSpecificationAsTripleComponent& scanSpecification,
-    const Permutation::Enum& permutation) const {
+size_t Index::getResultSizeOfScan(const ScanSpecification& scanSpecification,
+                                  const Permutation::Enum& permutation) const {
   return pimpl_->getResultSizeOfScan(scanSpecification, permutation);
 }

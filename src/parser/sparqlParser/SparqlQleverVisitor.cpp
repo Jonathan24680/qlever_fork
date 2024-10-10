@@ -23,9 +23,9 @@
 #include "engine/sparqlExpressions/RelationalExpressions.h"
 #include "engine/sparqlExpressions/SampleExpression.h"
 #include "engine/sparqlExpressions/UuidExpressions.h"
+#include "parser/RdfParser.h"
 #include "parser/SparqlParser.h"
 #include "parser/TokenizerCtre.h"
-#include "parser/TurtleParser.h"
 #include "parser/data/Variable.h"
 #include "util/StringUtils.h"
 #include "util/TransparentFunctors.h"
@@ -235,8 +235,9 @@ Alias Visitor::visit(Parser::AliasWithoutBracketsContext* ctx) {
 
 // ____________________________________________________________________________________
 ParsedQuery Visitor::visit(Parser::ConstructQueryContext* ctx) {
-  visitVector(ctx->datasetClause());
   ParsedQuery query;
+  query.datasetClauses_ = parsedQuery::DatasetClauses::fromClauses(
+      visitVector(ctx->datasetClause()));
   if (ctx->constructTemplate()) {
     query._clause = visit(ctx->constructTemplate())
                         .value_or(parsedQuery::ConstructClause{});
@@ -263,29 +264,28 @@ ParsedQuery Visitor::visit(const Parser::AskQueryContext* ctx) {
 }
 
 // ____________________________________________________________________________________
-void Visitor::visit(const Parser::DatasetClauseContext* ctx) {
-  reportNotSupported(ctx, "FROM clauses are");
+DatasetClause Visitor::visit(Parser::DatasetClauseContext* ctx) {
+  if (ctx->defaultGraphClause()) {
+    return {.dataset_ = visit(ctx->defaultGraphClause()), .isNamed_ = false};
+  } else {
+    AD_CORRECTNESS_CHECK(ctx->namedGraphClause());
+    return {.dataset_ = visit(ctx->namedGraphClause()), .isNamed_ = true};
+  }
 }
 
 // ____________________________________________________________________________________
-void Visitor::visit(Parser::DefaultGraphClauseContext*) {
-  // This rule is only used by the `DatasetClause` rule which also is not
-  // supported and should already have thrown an exception.
-  AD_FAIL();
+TripleComponent::Iri Visitor::visit(Parser::DefaultGraphClauseContext* ctx) {
+  return visit(ctx->sourceSelector());
 }
 
 // ____________________________________________________________________________________
-void Visitor::visit(Parser::NamedGraphClauseContext*) {
-  // This rule is only used by the `DatasetClause` rule which also is not
-  // supported and should already have thrown an exception.
-  AD_FAIL();
+TripleComponent::Iri Visitor::visit(Parser::NamedGraphClauseContext* ctx) {
+  return visit(ctx->sourceSelector());
 }
 
 // ____________________________________________________________________________________
-void Visitor::visit(Parser::SourceSelectorContext*) {
-  // This rule is only indirectly used by the `DatasetClause` rule which also is
-  // not supported and should already have thrown an exception.
-  AD_FAIL();
+TripleComponent::Iri Visitor::visit(Parser::SourceSelectorContext* ctx) {
+  return visit(ctx->iri());
 }
 
 // ____________________________________________________________________________________
@@ -705,14 +705,6 @@ GraphPatternOperation Visitor::visit(Parser::OptionalGraphPatternContext* ctx) {
 
 // Parsing for the `serviceGraphPattern` rule.
 parsedQuery::Service Visitor::visit(Parser::ServiceGraphPatternContext* ctx) {
-  // If SILENT is specified, report that we do not support it yet.
-  //
-  // TODO: Support it, it's not hard. The semantics of SILENT is that if no
-  // result can be obtained from the remote endpoint, then do as if the SERVICE
-  // clause would not be there = the result is the neutral element.
-  if (ctx->SILENT()) {
-    reportNotSupported(ctx, "SILENT modifier in SERVICE is");
-  }
   // Get the IRI and if a variable is specified, report that we do not support
   // it yet.
   //
@@ -728,7 +720,9 @@ parsedQuery::Service Visitor::visit(Parser::ServiceGraphPatternContext* ctx) {
     reportNotSupported(ctx->varOrIri(), "Variable endpoint in SERVICE is");
   }
   AD_CONTRACT_CHECK(std::holds_alternative<Iri>(varOrIri));
-  Iri serviceIri = std::get<Iri>(varOrIri);
+  auto serviceIri =
+      TripleComponent::Iri::fromIriref(std::get<Iri>(varOrIri).iri());
+
   // Parse the body of the SERVICE query. Add the visible variables from the
   // SERVICE clause to the visible variables so far, but also remember them
   // separately (with duplicates removed) because we need them in `Service.cpp`
@@ -745,14 +739,24 @@ parsedQuery::Service Visitor::visit(Parser::ServiceGraphPatternContext* ctx) {
                            visibleVariablesServiceQuery.end());
   // Create suitable `parsedQuery::Service` object and return it.
   return {std::move(visibleVariablesServiceQuery), std::move(serviceIri),
-          prologueString_,
-          getOriginalInputForContext(ctx->groupGraphPattern())};
+          prologueString_, getOriginalInputForContext(ctx->groupGraphPattern()),
+          static_cast<bool>(ctx->SILENT())};
 }
 
 // ____________________________________________________________________________
 parsedQuery::GraphPatternOperation Visitor::visit(
-    const Parser::GraphGraphPatternContext* ctx) {
-  reportNotSupported(ctx, "Named Graphs (FROM, GRAPH) are");
+    Parser::GraphGraphPatternContext* ctx) {
+  auto varOrIri = visit(ctx->varOrIri());
+  auto group = visit(ctx->groupGraphPattern());
+  if (std::holds_alternative<Variable>(varOrIri)) {
+    const auto& graphVar = std::get<Variable>(varOrIri);
+    addVisibleVariable(graphVar);
+    return parsedQuery::GroupGraphPattern{std::move(group), graphVar};
+  }
+  AD_CORRECTNESS_CHECK(std::holds_alternative<Iri>(varOrIri));
+  auto& iri = std::get<Iri>(varOrIri);
+  return parsedQuery::GroupGraphPattern{
+      std::move(group), TripleComponent::Iri::fromIriref(iri.toSparql())};
 }
 
 // Parsing for the `expression` rule.
@@ -927,7 +931,8 @@ void Visitor::visit(Parser::PrefixDeclContext* ctx) {
 // ____________________________________________________________________________________
 ParsedQuery Visitor::visit(Parser::SelectQueryContext* ctx) {
   parsedQuery_._clause = visit(ctx->selectClause());
-  visitVector(ctx->datasetClause());
+  parsedQuery_.datasetClauses_ = parsedQuery::DatasetClauses::fromClauses(
+      visitVector(ctx->datasetClause()));
   auto [pattern, visibleVariables] = visit(ctx->whereClause());
   parsedQuery_._rootGraphPattern = std::move(pattern);
   parsedQuery_.registerVariablesVisibleInQueryBody(visibleVariables);
@@ -1051,7 +1056,7 @@ TripleComponent Visitor::visit(Parser::DataBlockValueContext* ctx) {
   if (ctx->iri()) {
     return visit(ctx->iri());
   } else if (ctx->rdfLiteral()) {
-    return TurtleStringParser<TokenizerCtre>::parseTripleObject(
+    return RdfStringParser<TurtleParser<Tokenizer>>::parseTripleObject(
         visit(ctx->rdfLiteral()));
   } else if (ctx->numericLiteral()) {
     return std::visit(
@@ -1919,8 +1924,9 @@ ExpressionPtr Visitor::visit(Parser::PrimaryExpressionContext* ctx) {
   using namespace sparqlExpression;
 
   if (ctx->rdfLiteral()) {
-    auto tripleComponent = TurtleStringParser<TokenizerCtre>::parseTripleObject(
-        visit(ctx->rdfLiteral()));
+    auto tripleComponent =
+        RdfStringParser<TurtleParser<TokenizerCtre>>::parseTripleObject(
+            visit(ctx->rdfLiteral()));
     AD_CORRECTNESS_CHECK(!tripleComponent.isIri() &&
                          !tripleComponent.isString());
     if (tripleComponent.isLiteral()) {
@@ -2076,7 +2082,7 @@ ExpressionPtr Visitor::visit([[maybe_unused]] Parser::BuiltInCallContext* ctx) {
   } else if (functionName == "concat") {
     AD_CORRECTNESS_CHECK(ctx->expressionList());
     return makeConcatExpression(visit(ctx->expressionList()));
-  } else if (functionName == "isiri") {
+  } else if (functionName == "isiri" || functionName == "isuri") {
     return createUnary(&makeIsIriExpression);
   } else if (functionName == "isblank") {
     return createUnary(&makeIsBlankExpression);
@@ -2403,7 +2409,7 @@ TripleComponent SparqlQleverVisitor::visitGraphTerm(
     if constexpr (std::is_same_v<T, Variable>) {
       return element;
     } else if constexpr (std::is_same_v<T, Literal> || std::is_same_v<T, Iri>) {
-      return TurtleStringParser<TokenizerCtre>::parseTripleObject(
+      return RdfStringParser<TurtleParser<TokenizerCtre>>::parseTripleObject(
           element.toSparql());
     } else {
       return element.toSparql();

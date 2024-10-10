@@ -12,11 +12,11 @@
 #include "engine/ExportQueryExecutionTrees.h"
 #include "engine/VariableToColumnMap.h"
 #include "global/RuntimeParameters.h"
+#include "parser/RdfParser.h"
 #include "parser/TokenizerCtre.h"
-#include "parser/TurtleParser.h"
 #include "util/Exception.h"
 #include "util/HashSet.h"
-#include "util/Views.h"
+#include "util/StringUtils.h"
 #include "util/http/HttpUtils.h"
 
 // ____________________________________________________________________________
@@ -32,8 +32,11 @@ Service::Service(QueryExecutionContext* qec,
 // ____________________________________________________________________________
 std::string Service::getCacheKeyImpl() const {
   std::ostringstream os;
-  // TODO: This duplicates code in GraphPatternOperation.cpp .
-  os << "SERVICE " << parsedServiceClause_.serviceIri_.toSparql() << " {\n"
+  os << "SERVICE ";
+  if (parsedServiceClause_.silent_) {
+    os << "SILENT ";
+  }
+  os << parsedServiceClause_.serviceIri_.toStringRepresentation() << " {\n"
      << parsedServiceClause_.prologue_ << "\n"
      << parsedServiceClause_.graphPatternAsString_ << "\n";
   if (siblingTree_ != nullptr) {
@@ -45,8 +48,9 @@ std::string Service::getCacheKeyImpl() const {
 
 // ____________________________________________________________________________
 std::string Service::getDescriptor() const {
-  return absl::StrCat("Service with IRI ",
-                      parsedServiceClause_.serviceIri_.toSparql());
+  return absl::StrCat(
+      "Service with IRI ",
+      parsedServiceClause_.serviceIri_.toStringRepresentation());
 }
 
 // ____________________________________________________________________________
@@ -91,14 +95,6 @@ size_t Service::getCostEstimate() {
 
 // ____________________________________________________________________________
 ProtoResult Service::computeResult([[maybe_unused]] bool requestLaziness) {
-  // Get the URL of the SPARQL endpoint.
-  std::string_view serviceIriString = parsedServiceClause_.serviceIri_.iri();
-  AD_CONTRACT_CHECK(serviceIriString.starts_with("<") &&
-                    serviceIriString.ends_with(">"));
-  serviceIriString.remove_prefix(1);
-  serviceIriString.remove_suffix(1);
-  ad_utility::httpUtils::Url serviceUrl{serviceIriString};
-
   // Try to simplify the Service Query using it's sibling Operation.
   if (auto valuesClause = getSiblingValuesClause(); valuesClause.has_value()) {
     auto openBracketPos = parsedServiceClause_.graphPatternAsString_.find('{');
@@ -106,6 +102,28 @@ ProtoResult Service::computeResult([[maybe_unused]] bool requestLaziness) {
         "{\n" + valuesClause.value() + '\n' +
         parsedServiceClause_.graphPatternAsString_.substr(openBracketPos + 1);
   }
+
+  try {
+    return computeResultImpl(requestLaziness);
+  } catch (const ad_utility::CancellationException&) {
+    throw;
+  } catch (const ad_utility::detail::AllocationExceedsLimitException&) {
+    throw;
+  } catch (const std::exception&) {
+    // if the `SILENT` keyword is set in the service clause, catch the error and
+    // return a neutral Element.
+    if (parsedServiceClause_.silent_) {
+      return makeNeutralElementResultForSilentFail();
+    }
+    throw;
+  }
+}
+
+// ____________________________________________________________________________
+ProtoResult Service::computeResultImpl([[maybe_unused]] bool requestLaziness) {
+  // Get the URL of the SPARQL endpoint.
+  ad_utility::httpUtils::Url serviceUrl{
+      asStringViewUnsafe(parsedServiceClause_.serviceIri_.getContent())};
 
   // Construct the query to be sent to the SPARQL endpoint.
   std::string variablesForSelectClause = absl::StrJoin(
@@ -120,99 +138,159 @@ ProtoResult Service::computeResult([[maybe_unused]] bool requestLaziness) {
             << ", target: " << serviceUrl.target() << ")" << std::endl
             << serviceQuery << std::endl;
 
-  cppcoro::generator<std::span<std::byte>> jsonByteResult = getResultFunction_(
+  HttpOrHttpsResponse response = getResultFunction_(
       serviceUrl, cancellationHandle_, boost::beast::http::verb::post,
       serviceQuery, "application/sparql-query",
       "application/sparql-results+json");
 
-  std::basic_string<char, std::char_traits<char>,
-                    ad_utility::AllocatorWithLimit<char>>
-      jsonStr(_executionContext->getAllocator());
-  for (std::span<std::byte> bytes : jsonByteResult) {
-    jsonStr.append(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-    checkCancellation();
-  }
-
-  // Parse the received result.
-  auto throwErrorWithContext = [&jsonStr](std::string_view sv) {
-    throw std::runtime_error(absl::StrCat(
-        sv,
-        " First 100 bytes: ", std::string_view{jsonStr.data()}.substr(0, 100)));
-  };
-  std::vector<std::string> resVariables;
-  std::vector<nlohmann::json> resBindings;
-  try {
-    auto jsonResult = nlohmann::json::parse(jsonStr);
-
-    if (jsonResult.empty()) {
-      throw std::runtime_error(absl::StrCat("Response from SPARQL endpoint ",
-                                            serviceUrl.host(), " is empty"));
+  auto throwErrorWithContext = [this, &response](std::string_view sv) {
+    std::string ctx;
+    ctx.reserve(100);
+    for (const auto& bytes : std::move(response.body_)) {
+      ctx += std::string(reinterpret_cast<const char*>(bytes.data()),
+                         bytes.size());
+      if (ctx.size() >= 100) {
+        break;
+      }
     }
+    this->throwErrorWithContext(sv, std::string_view(ctx).substr(0, 100));
+  };
 
-    resVariables = jsonResult["head"]["vars"].get<std::vector<std::string>>();
-    resBindings =
-        jsonResult["results"]["bindings"].get<std::vector<nlohmann::json>>();
-  } catch (const nlohmann::json::parse_error&) {
-    throwErrorWithContext("Failed to parse the Service result as JSON.");
-  } catch (const nlohmann::json::type_error&) {
-    throwErrorWithContext("JSON result does not have the expected structure.");
+  // Verify status and content-type of the response.
+  if (response.status_ != boost::beast::http::status::ok) {
+    throwErrorWithContext(absl::StrCat(
+        "SERVICE responded with HTTP status code: ",
+        static_cast<int>(response.status_), ", ",
+        toStd(boost::beast::http::obsolete_reason(response.status_))));
+  }
+  if (!ad_utility::utf8ToLower(response.contentType_)
+           .starts_with("application/sparql-results+json")) {
+    throwErrorWithContext(absl::StrCat(
+        "QLever requires the endpoint of a SERVICE to send the result as "
+        "'application/sparql-results+json' but the endpoint sent '",
+        response.contentType_, "'"));
   }
 
-  // Check if result header row is expected.
-  std::string headerRow = absl::StrCat("?", absl::StrJoin(resVariables, " ?"));
-  std::string expectedHeaderRow = absl::StrJoin(
-      parsedServiceClause_.visibleVariables_, " ", Variable::AbslFormatter);
-  if (headerRow != expectedHeaderRow) {
-    throw std::runtime_error(absl::StrCat(
-        "Header row of JSON result for SERVICE query is \"", headerRow,
-        "\", but expected \"", expectedHeaderRow, "\""));
-  }
+  // Prepare the expected Variables as keys for the JSON-bindings. We can't wait
+  // for the variables sent in the response as they're maybe not read before
+  // the bindings.
+  std::vector<std::string> expVariableKeys;
+  std::ranges::transform(parsedServiceClause_.visibleVariables_,
+                         std::back_inserter(expVariableKeys),
+                         [](const Variable& v) { return v.name().substr(1); });
 
-  // Set basic properties of the result table.
-  IdTable idTable{getExecutionContext()->getAllocator()};
-  idTable.setNumColumns(getResultWidth());
-  LocalVocab localVocab{};
-  // Fill the result table using the `writeJsonResult` method below.
-  size_t resWidth = getResultWidth();
-  CALL_FIXED_SIZE(resWidth, &Service::writeJsonResult, this, resVariables,
-                  resBindings, &idTable, &localVocab);
+  auto body = ad_utility::LazyJsonParser::parse(std::move(response.body_),
+                                                {"results", "bindings"});
 
-  return {std::move(idTable), resultSortedOn(), std::move(localVocab)};
+  // Note: The `body`-generator also keeps the complete response connection
+  // alive, so we have no lifetime issue here(see `HttpRequest::send` for
+  // details).
+  auto localVocabPtr = std::make_shared<LocalVocab>();
+  auto generator = computeResultLazily(expVariableKeys, std::move(body),
+                                       localVocabPtr, !requestLaziness);
+
+  return requestLaziness
+             ? ProtoResult{std::move(generator), resultSortedOn(),
+                           std::move(localVocabPtr)}
+             : ProtoResult{cppcoro::getSingleElement(std::move(generator)),
+                           resultSortedOn(), std::move(*localVocabPtr)};
 }
 
-// ____________________________________________________________________________
 template <size_t I>
 void Service::writeJsonResult(const std::vector<std::string>& vars,
-                              const std::vector<nlohmann::json>& bindings,
-                              IdTable* idTablePtr, LocalVocab* localVocab) {
+                              const nlohmann::json& partJson,
+                              IdTable* idTablePtr, LocalVocab* localVocab,
+                              size_t& rowIdx) {
   IdTableStatic<I> idTable = std::move(*idTablePtr).toStatic<I>();
   checkCancellation();
   std::vector<size_t> numLocalVocabPerColumn(idTable.numColumns());
 
-  size_t rowIdx = 0;
-  for (const auto& binding : bindings) {
-    idTable.emplace_back();
-    for (size_t colIdx = 0; colIdx < vars.size(); ++colIdx) {
-      TripleComponent tc = binding.contains(vars[colIdx])
-                               ? bindingToTripleComponent(binding[vars[colIdx]])
-                               : TripleComponent::UNDEF();
+  auto writeBindings = [&](const nlohmann::json& bindings, size_t& rowIdx) {
+    for (const auto& binding : bindings) {
+      idTable.emplace_back();
+      for (size_t colIdx = 0; colIdx < vars.size(); ++colIdx) {
+        TripleComponent tc =
+            binding.contains(vars[colIdx])
+                ? bindingToTripleComponent(binding[vars[colIdx]])
+                : TripleComponent::UNDEF();
 
-      Id id = std::move(tc).toValueId(getIndex().getVocab(), *localVocab);
-      idTable(rowIdx, colIdx) = id;
-      if (id.getDatatype() == Datatype::LocalVocabIndex) {
-        ++numLocalVocabPerColumn[colIdx];
+        Id id = std::move(tc).toValueId(getIndex().getVocab(), *localVocab);
+        idTable(rowIdx, colIdx) = id;
+        if (id.getDatatype() == Datatype::LocalVocabIndex) {
+          ++numLocalVocabPerColumn[colIdx];
+        }
       }
+      rowIdx++;
+      checkCancellation();
     }
-    rowIdx++;
-    checkCancellation();
-  }
+  };
 
-  AD_CORRECTNESS_CHECK(rowIdx == idTable.size());
-  LOG(INFO) << "Number of rows in result: " << idTable.size() << std::endl;
-  LOG(INFO) << "Number of entries in local vocabulary per column: "
-            << absl::StrJoin(numLocalVocabPerColumn, ", ") << std::endl;
+  // The LazyJsonParser only yields partJsons containing the "bindings" array,
+  // therefore we can assume its existence here.
+  AD_CORRECTNESS_CHECK(partJson.contains("results") &&
+                       partJson["results"].contains("bindings") &&
+                       partJson["results"]["bindings"].is_array());
+  writeBindings(partJson["results"]["bindings"], rowIdx);
+
   *idTablePtr = std::move(idTable).toDynamic();
   checkCancellation();
+}
+
+// ____________________________________________________________________________
+cppcoro::generator<IdTable> Service::computeResultLazily(
+    const std::vector<std::string> vars,
+    ad_utility::LazyJsonParser::Generator body,
+    std::shared_ptr<LocalVocab> localVocab, bool singleIdTable) {
+  IdTable idTable{getResultWidth(), getExecutionContext()->getAllocator()};
+
+  size_t rowIdx = 0;
+  bool varsChecked{false};
+  bool resultExists{false};
+  try {
+    for (const nlohmann::json& partJson : body) {
+      if (partJson.contains("head")) {
+        AD_CORRECTNESS_CHECK(!varsChecked);
+        verifyVariables(partJson["head"], body.details());
+        varsChecked = true;
+      }
+
+      CALL_FIXED_SIZE(getResultWidth(), &Service::writeJsonResult, this, vars,
+                      partJson, &idTable, localVocab.get(), rowIdx);
+      if (!singleIdTable) {
+        co_yield idTable;
+        idTable.clear();
+        rowIdx = 0;
+      }
+      resultExists = true;
+    }
+  } catch (const ad_utility::LazyJsonParser::Error& e) {
+    throwErrorWithContext(
+        absl::StrCat("Parser failed with error: '", e.what(), "'"),
+        body.details().first100_, body.details().last100_);
+  }
+
+  // As the LazyJsonParser only passes parts of the result that match
+  // the expected structure, no result implies an unexpected
+  // structure.
+  if (!resultExists) {
+    throwErrorWithContext(
+        "JSON result does not have the expected structure (results "
+        "section "
+        "missing)",
+        body.details().first100_, body.details().last100_);
+  }
+
+  if (!varsChecked) {
+    throwErrorWithContext(
+        "JSON result does not have the expected structure (head "
+        "section "
+        "missing)",
+        body.details().first100_, body.details().last100_);
+  }
+
+  if (singleIdTable) {
+    co_yield idTable;
+  }
 }
 
 // ____________________________________________________________________________
@@ -244,31 +322,35 @@ std::optional<std::string> Service::getSiblingValuesClause() const {
 
   checkCancellation();
 
-  ad_utility::HashSet<std::string> rowSet;
-
-  std::string values = " { ";
-  for (size_t rowIndex = 0; rowIndex < siblingResult->idTable().size();
-       ++rowIndex) {
+  // Creates a single row of the values clause or an empty string on error.
+  auto createValueRow = [&](size_t rowIndex) -> std::string {
     std::string row = "(";
     for (const auto& columnIdx : commonColumnIndices) {
-      const auto& optionalString = ExportQueryExecutionTrees::idToStringAndType(
+      const auto& optStr = idToValueForValuesClause(
           siblingTree_->getRootOperation()->getIndex(),
           siblingResult->idTable()(rowIndex, columnIdx),
           siblingResult->localVocab());
 
-      if (optionalString.has_value()) {
-        absl::StrAppend(&row, optionalString.value().first, " ");
+      if (!optStr.has_value()) {
+        return "";
       }
+      absl::StrAppend(&row, optStr.value(), " ");
     }
     row.back() = ')';
+    return row;
+  };
 
-    if (rowSet.contains(row)) {
+  ad_utility::HashSet<std::string> rowSet;
+  std::string values = " { ";
+  for (size_t rowIndex = 0; rowIndex < siblingResult->idTable().size();
+       ++rowIndex) {
+    std::string row = createValueRow(rowIndex);
+    if (row.empty() || rowSet.contains(row)) {
       continue;
     }
-
     rowSet.insert(row);
-    absl::StrAppend(&values, row, " ");
 
+    absl::StrAppend(&values, row, " ");
     checkCancellation();
   }
 
@@ -276,35 +358,138 @@ std::optional<std::string> Service::getSiblingValuesClause() const {
 }
 
 // ____________________________________________________________________________
-TripleComponent Service::bindingToTripleComponent(const nlohmann::json& cell) {
-  if (!cell.contains("type") || !cell.contains("value")) {
-    throw std::runtime_error("Missing type or value field in binding.");
+TripleComponent Service::bindingToTripleComponent(
+    const nlohmann::json& binding) {
+  if (!binding.contains("type") || !binding.contains("value")) {
+    throw std::runtime_error(absl::StrCat(
+        "Missing type or value field in binding. The binding is: '",
+        binding.dump(), "'"));
   }
 
-  const auto type = cell["type"].get<std::string_view>();
-  const auto value = cell["value"].get<std::string_view>();
+  const auto type = binding["type"].get<std::string_view>();
+  const auto value = binding["value"].get<std::string_view>();
 
   TripleComponent tc;
   if (type == "literal") {
-    if (cell.contains("datatype")) {
+    if (binding.contains("datatype")) {
       tc = TurtleParser<TokenizerCtre>::literalAndDatatypeToTripleComponent(
           value, TripleComponent::Iri::fromIrirefWithoutBrackets(
-                     cell["datatype"].get<std::string_view>()));
-    } else if (cell.contains("xml:lang")) {
-      tc = TripleComponent::Literal::literalWithoutQuotes(
-          value, cell["xml:lang"].get<std::string>());
+                     binding["datatype"].get<std::string_view>()));
+    } else if (binding.contains("xml:lang")) {
+      tc = TripleComponent::Literal::literalWithNormalizedContent(
+          asNormalizedStringViewUnsafe(value),
+          binding["xml:lang"].get<std::string>());
     } else {
-      tc = TripleComponent::Literal::literalWithoutQuotes(value);
+      tc = TripleComponent::Literal::literalWithNormalizedContent(
+          asNormalizedStringViewUnsafe(value));
     }
   } else if (type == "uri") {
     tc = TripleComponent::Iri::fromIrirefWithoutBrackets(value);
   } else if (type == "bnode") {
     throw std::runtime_error(
-        "Blank nodes in the result of a SERVICE are currently not supported. "
-        "For now, consider filtering them out using the ISBLANK function or "
+        "Blank nodes in the result of a SERVICE are currently not "
+        "supported. "
+        "For now, consider filtering them out using the ISBLANK function "
+        "or "
         "converting them via the STR function.");
   } else {
-    throw std::runtime_error(absl::StrCat("Type ", type, " is undefined."));
+    throw std::runtime_error(absl::StrCat("Type ", type,
+                                          " is undefined. The binding is: '",
+                                          binding.dump(), "'"));
   }
   return tc;
+}
+
+// ____________________________________________________________________________
+ProtoResult Service::makeNeutralElementResultForSilentFail() const {
+  IdTable idTable{getResultWidth(), getExecutionContext()->getAllocator()};
+  idTable.emplace_back();
+  for (size_t colIdx = 0; colIdx < getResultWidth(); ++colIdx) {
+    idTable(0, colIdx) = Id::makeUndefined();
+  }
+  return {std::move(idTable), resultSortedOn(), LocalVocab{}};
+}
+
+// ____________________________________________________________________________
+void Service::verifyVariables(
+    const nlohmann::json& head,
+    const ad_utility::LazyJsonParser::Details& details) const {
+  std::vector<std::string> vars;
+  try {
+    vars = head.at("vars").get<std::vector<std::string>>();
+  } catch (...) {
+    throw std::runtime_error(
+        absl::StrCat("JSON result does not have the expected structure, as its "
+                     "\"head\" section is not according to the SPARQL "
+                     "standard. The \"head\" section is: '",
+                     head.dump(), "'."));
+  }
+
+  ad_utility::HashSet<Variable> responseVars;
+  for (const auto& v : vars) {
+    responseVars.emplace("?" + v);
+  }
+  ad_utility::HashSet<Variable> expectedVars(
+      parsedServiceClause_.visibleVariables_.begin(),
+      parsedServiceClause_.visibleVariables_.end());
+
+  if (responseVars != expectedVars) {
+    throwErrorWithContext(
+        absl::StrCat("Header row of JSON result for SERVICE query is \"",
+                     absl::StrCat("?", absl::StrJoin(vars, " ?")),
+                     "\", but expected \"",
+                     absl::StrJoin(parsedServiceClause_.visibleVariables_, " ",
+                                   Variable::AbslFormatter),
+                     "\". Probable cause: The remote endpoint sent a JSON "
+                     "response that is not according to the SPARQL Standard"),
+        details.first100_, details.last100_);
+  }
+}
+
+// ____________________________________________________________________________
+void Service::throwErrorWithContext(std::string_view msg,
+                                    std::string_view first100,
+                                    std::string_view last100) const {
+  const ad_utility::httpUtils::Url serviceUrl{
+      asStringViewUnsafe(parsedServiceClause_.serviceIri_.getContent())};
+
+  throw std::runtime_error(absl::StrCat(
+      "Error while executing a SERVICE request to <", serviceUrl.asString(),
+      ">: ", msg, ". First 100 bytes of the response: '", first100,
+      (last100.empty() ? "'"
+                       : absl::StrCat(", last 100 bytes: '", last100, "'"))));
+}
+
+// ____________________________________________________________________________
+std::optional<std::string> Service::idToValueForValuesClause(
+    const Index& index, Id id, const LocalVocab& localVocab) {
+  using enum Datatype;
+  const auto& optionalStringAndXsdType =
+      ExportQueryExecutionTrees::idToStringAndType(index, id, localVocab);
+  if (!optionalStringAndXsdType.has_value()) {
+    AD_CORRECTNESS_CHECK(id.getDatatype() == Undefined);
+    return "UNDEF";
+  }
+  const auto& [value, xsdType] = optionalStringAndXsdType.value();
+
+  switch (id.getDatatype()) {
+    case BlankNodeIndex:
+      // Blank nodes are not allowed in a values clause. Additionally blank
+      // nodes across a SERVICE endpoint are disjoint anyway, so rows that
+      // contain blank nodes will never create matches and we can safely omit
+      // them.
+      return std::nullopt;
+    case Int:
+    case Double:
+    case Bool:
+      return value;
+    default:
+      if (xsdType) {
+        return absl::StrCat("\"", value, "\"^^<", xsdType, ">");
+      } else if (value.starts_with('<')) {
+        return value;
+      } else {
+        return RdfEscaping::validRDFLiteralFromNormalized(value);
+      }
+  }
 }

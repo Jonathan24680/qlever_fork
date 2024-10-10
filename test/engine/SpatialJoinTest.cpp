@@ -15,12 +15,19 @@
 #include "engine/SpatialJoin.h"
 #include "parser/data/Variable.h"
 
+
 #include <boost/geometry.hpp>
 #include <boost/geometry/geometries/point.hpp>
 #include <boost/geometry/geometries/box.hpp>
 #include <boost/foreach.hpp>
 
+namespace {  // anonymous namespace to avoid linker problems
+
 using namespace ad_utility::testing;
+
+auto makePointLiteral = [](std::string_view c1, std::string_view c2) {
+  return absl::StrCat(" \"POINT(", c1, " ", c2, ")\"^^<", GEO_WKT_LITERAL, ">");
+};
 
 namespace localTestHelpers {
 
@@ -99,100 +106,14 @@ std::string createSmallDatasetWithPoints() {
                        number, "> <asWKT> ", point, " .");
   };
   std::string kg2;
-  addPoint(kg2, "1", "\"Uni Freiburg TF\"", "\"POINT(7.83505 48.01267)\"");
-  addPoint(kg2, "2", "\"Minster Freiburg\"", "\"POINT(7.85298 47.99557)\"");
-  addPoint(kg2, "3", "\"London Eye\"", "\"POINT(-0.11957 51.50333)\"");
-  addPoint(kg2, "4", "\"Statue of liberty\"", "\"POINT(-74.04454 40.68925)\"");
-  addPoint(kg2, "5", "\"eiffel tower\"", "\"POINT(2.29451 48.85825)\"");
+  auto p = makePointLiteral;
+  addPoint(kg2, "1", "\"Uni Freiburg TF\"", p("7.83505", "48.01267"));
+  addPoint(kg2, "2", "\"Minster Freiburg\"", p("7.85298", "47.99557"));
+  addPoint(kg2, "3", "\"London Eye\"", p("-0.11957", "51.50333"));
+  addPoint(kg2, "4", "\"Statue of liberty\"", p("-74.04454", "40.68925"));
+  addPoint(kg2, "5", "\"eiffel tower\"", p("2.29451", "48.85825"));
 
   return kg2;
-}
-
-// this function creates an input as a test set and returns it
-void createTestKnowledgeGraph(std::string filename, bool verbose) {
-  auto addPoint = [](std::ofstream& kg, double lat, double lon) {
-    auto addLonLatLine = [](std::ofstream& kg, string name, double lat,
-                            double lon) {
-      kg << name;
-      kg << " geo:asWKT Point(";
-      kg << std::to_string(lat);
-      kg << " ";
-      kg << std::to_string(lon);
-      kg << ")^^geo:wktLiteral .\n";
-    };
-
-    auto addAdditionalInfo = [](std::ofstream& kg, string name, string lonOrLat,
-                                double lonOrLatValue) {
-      auto addTriple = [](std::ofstream& kg, string subject, string predicate,
-                          string object) {
-        kg << subject << " " << predicate << " " << object << " .\n";
-      };
-
-      double fraction = std::abs(lonOrLatValue - (int)lonOrLatValue);
-      string hasFractionalPart =
-          absl::StrCat("<", lonOrLat, "-has-fractional-part>");
-      string isDivisibleBy = absl::StrCat("<", lonOrLat, "-is-div-by>");
-      if (fraction > 0.49 && fraction < 0.51) {
-        addTriple(kg, name, hasFractionalPart, "<one-half>");
-      } else if (fraction > 0.33 && fraction < 0.34) {
-        addTriple(kg, name, hasFractionalPart, "<one-third>");
-      } else if (fraction > 0.66 && fraction < 0.67) {
-        addTriple(kg, name, hasFractionalPart, "<two-third>");
-      } else if (fraction < 0.01) {
-        if ((int)lonOrLatValue % 2 == 0) {
-          addTriple(kg, name, isDivisibleBy, "<two>");  // divisible by two
-        }
-        if ((int)lonOrLatValue % 3 == 0) {
-          addTriple(kg, name, isDivisibleBy, "<three>");  // divisible by three
-        }
-        if ((int)lonOrLatValue % 4 == 0) {
-          addTriple(kg, name, isDivisibleBy, "<four>");  // divisible by four
-        }
-        if ((int)lonOrLatValue % 5 == 0) {
-          addTriple(kg, name, isDivisibleBy, "<five>");  // divisible by five
-        }
-      }
-    };
-
-    string name =
-        "Point_" + std::to_string(lat) + "_" + std::to_string(lon) + "";
-
-    addLonLatLine(kg, name, lat, lon);
-    addAdditionalInfo(kg, name, "lat", lat);
-    addAdditionalInfo(kg, name, "lon", lon);
-  };
-
-  std::ofstream kg(filename);              // file for the knowledge graph
-  for (int lat = -90; lat <= 90; lat++) {  // iterate over lonitude
-    std::cerr << lat << std::endl;
-    for (int lon = -180; lon < 180; lon++) {  // iterate over lonitude
-      if (lat == -90 || lat == 90) {
-        // only add one point for the poles
-        addPoint(kg, lat, 0);
-        break;
-      }
-
-      if (!verbose) {
-        if (lat % 2 == 1 || (lon > -160 && lon < -20) ||
-            (lon > 20 && lon < 160)) {
-          addPoint(kg, lat, lon);
-          continue;
-        }
-      }
-
-      std::vector<double> latValues{static_cast<double>(lat), lat + 1 / 3.0,
-                                    lat + 1 / 2.0, lat + 2 / 3.0};
-      std::vector<double> lonValues{static_cast<double>(lon), lon + 1 / 3.0,
-                                    lon + 1 / 2.0, lon + 2 / 3.0};
-
-      for (size_t i = 0; i < latValues.size(); i++) {
-        for (size_t k = 0; k < lonValues.size(); k++) {
-          addPoint(kg, latValues.at(i), lonValues.at(k));
-        }
-      }
-    }
-  }
-  kg.close();
 }
 
 QueryExecutionContext* buildTestQEC() {
@@ -440,23 +361,23 @@ std::vector<std::string> mergeToRow(std::vector<std::string> part1,
 
 std::vector<std::vector<std::string>> unordered_rows{
     std::vector<std::string>{"\"Uni Freiburg TF\"", "<node_1>", "<geometry1>",
-                             "\"POINT(7.83505 48.01267)\""},
+                             "POINT(7.835050 48.012670)"},
     std::vector<std::string>{"\"Minster Freiburg\"", "<node_2>", "<geometry2>",
-                             "\"POINT(7.85298 47.99557)\""},
+                             "POINT(7.852980 47.995570)"},
     std::vector<std::string>{"\"London Eye\"", "<node_3>", "<geometry3>",
-                             "\"POINT(-0.11957 51.50333)\""},
+                             "POINT(-0.119570 51.503330)"},
     std::vector<std::string>{"\"Statue of liberty\"", "<node_4>", "<geometry4>",
-                             "\"POINT(-74.04454 40.68925)\""},
+                             "POINT(-74.044540 40.689250)"},
     std::vector<std::string>{"\"eiffel tower\"", "<node_5>", "<geometry5>",
-                             "\"POINT(2.29451 48.85825)\""},
+                             "POINT(2.294510 48.858250)"},
 };
 
 std::vector<std::vector<std::string>> unordered_rows_small{
-    std::vector<std::string>{"<geometry1>", "\"POINT(7.83505 48.01267)\""},
-    std::vector<std::string>{"<geometry2>", "\"POINT(7.85298 47.99557)\""},
-    std::vector<std::string>{"<geometry3>", "\"POINT(-0.11957 51.50333)\""},
-    std::vector<std::string>{"<geometry4>", "\"POINT(-74.04454 40.68925)\""},
-    std::vector<std::string>{"<geometry5>", "\"POINT(2.29451 48.85825)\""}};
+    std::vector<std::string>{"<geometry1>", "POINT(7.835050 48.012670)"},
+    std::vector<std::string>{"<geometry2>", "POINT(7.852980 47.995570)"},
+    std::vector<std::string>{"<geometry3>", "POINT(-0.119570 51.503330)"},
+    std::vector<std::string>{"<geometry4>", "POINT(-74.044540 40.689250)"},
+    std::vector<std::string>{"<geometry5>", "POINT(2.294510 48.858250)"}};
 
 // in all calculations below, the factor 1000 is used to convert from km to m
 
@@ -465,73 +386,75 @@ std::vector<std::string> expectedDistSelf{"0"};
 
 // distance from Uni Freiburg to Freiburger Müsnster is 2,33 km according to
 // google maps
+auto P = [](double x, double y) { return GeoPoint(y, x); };
+
 std::vector<std::string> expectedDistUniMun{std::to_string(
-    static_cast<int>(ad_utility::detail::wktDistImpl(
-                         "POINT(7.83505 48.01267)", "POINT(7.85298 47.99557)") *
+    static_cast<int>(ad_utility::detail::wktDistImpl(P(7.83505, 48.01267),
+                                                     P(7.85298, 47.99557)) *
                      1000))};
 
 // distance from Uni Freiburg to Eiffel Tower is 419,32 km according to
 // google maps
 std::vector<std::string> expectedDistUniEif{std::to_string(
-    static_cast<int>(ad_utility::detail::wktDistImpl(
-                         "POINT(7.83505 48.01267)", "POINT(2.29451 48.85825)") *
+    static_cast<int>(ad_utility::detail::wktDistImpl(P(7.83505, 48.01267),
+                                                     P(2.29451, 48.85825)) *
                      1000))};
 
 // distance from Minster Freiburg to eiffel tower is 421,09 km according to
 // google maps
 std::vector<std::string> expectedDistMunEif{std::to_string(
-    static_cast<int>(ad_utility::detail::wktDistImpl(
-                         "POINT(7.85298 47.99557)", "POINT(2.29451 48.85825)") *
+    static_cast<int>(ad_utility::detail::wktDistImpl(P(7.85298, 47.99557),
+                                                     P(2.29451, 48.85825)) *
                      1000))};
 
 // distance from london eye to eiffel tower is 340,62 km according to
 // google maps
-std::vector<std::string> expectedDistEyeEif{std::to_string(static_cast<int>(
-    ad_utility::detail::wktDistImpl("POINT(-0.11957 51.50333)",
-                                    "POINT(2.29451 48.85825)") *
-    1000))};
+std::vector<std::string> expectedDistEyeEif{std::to_string(
+    static_cast<int>(ad_utility::detail::wktDistImpl(P(-0.11957, 51.50333),
+                                                     P(2.29451, 48.85825)) *
+                     1000))};
 
 // distance from Uni Freiburg to London Eye is 690,18 km according to
 // google maps
-std::vector<std::string> expectedDistUniEye{std::to_string(static_cast<int>(
-    ad_utility::detail::wktDistImpl("POINT(7.83505 48.01267)",
-                                    "POINT(-0.11957 51.50333)") *
-    1000))};
+std::vector<std::string> expectedDistUniEye{std::to_string(
+    static_cast<int>(ad_utility::detail::wktDistImpl(P(7.83505, 48.01267),
+                                                     P(-0.11957, 51.50333)) *
+                     1000))};
 
 // distance from Minster Freiburg to London Eye is 692,39 km according to
 // google maps
-std::vector<std::string> expectedDistMunEye{std::to_string(static_cast<int>(
-    ad_utility::detail::wktDistImpl("POINT(7.85298 47.99557)",
-                                    "POINT(-0.11957 51.50333)") *
-    1000))};
+std::vector<std::string> expectedDistMunEye{std::to_string(
+    static_cast<int>(ad_utility::detail::wktDistImpl(P(7.85298, 47.99557),
+                                                     P(-0.11957, 51.50333)) *
+                     1000))};
 
 // distance from Uni Freiburg to Statue of Liberty is 6249,55 km according to
 // google maps
-std::vector<std::string> expectedDistUniLib{std::to_string(static_cast<int>(
-    ad_utility::detail::wktDistImpl("POINT(7.83505 48.01267)",
-                                    "POINT(-74.04454 40.68925)") *
-    1000))};
+std::vector<std::string> expectedDistUniLib{std::to_string(
+    static_cast<int>(ad_utility::detail::wktDistImpl(P(7.83505, 48.01267),
+                                                     P(-74.04454, 40.68925)) *
+                     1000))};
 
 // distance from Minster Freiburg to Statue of Liberty is 6251,58 km
 // according to google maps
-std::vector<std::string> expectedDistMunLib{std::to_string(static_cast<int>(
-    ad_utility::detail::wktDistImpl("POINT(7.85298 47.99557)",
-                                    "POINT(-74.04454 40.68925)") *
-    1000))};
+std::vector<std::string> expectedDistMunLib{std::to_string(
+    static_cast<int>(ad_utility::detail::wktDistImpl(P(7.85298, 47.99557),
+                                                     P(-74.04454, 40.68925)) *
+                     1000))};
 
 // distance from london eye to statue of liberty is 5575,08 km according to
 // google maps
-std::vector<std::string> expectedDistEyeLib{std::to_string(static_cast<int>(
-    ad_utility::detail::wktDistImpl("POINT(-0.11957 51.50333)",
-                                    "POINT(-74.04454 40.68925)") *
-    1000))};
+std::vector<std::string> expectedDistEyeLib{std::to_string(
+    static_cast<int>(ad_utility::detail::wktDistImpl(P(-0.11957, 51.50333),
+                                                     P(-74.04454, 40.68925)) *
+                     1000))};
 
 // distance from eiffel tower to Statue of liberty is 5837,42 km according to
 // google maps
-std::vector<std::string> expectedDistEifLib{std::to_string(static_cast<int>(
-    ad_utility::detail::wktDistImpl("POINT(2.29451 48.85825)",
-                                    "POINT(-74.04454 40.68925)") *
-    1000))};
+std::vector<std::string> expectedDistEifLib{std::to_string(
+    static_cast<int>(ad_utility::detail::wktDistImpl(P(2.29451, 48.85825),
+                                                     P(-74.04454, 40.68925)) *
+                     1000))};
 
 std::vector<std::vector<std::string>> expectedMaxDist1_rows{
     mergeToRow(unordered_rows.at(0), unordered_rows.at(0), expectedDistSelf),
@@ -1158,14 +1081,14 @@ void testAddChild(bool addLeftChildFirst) {
       std::shared_ptr<Operation> op =
           spatialJoin->onlyForTestingGetLeftChild()->getRootOperation();
       IndexScan* scan = static_cast<IndexScan*>(op.get());
-      ASSERT_EQ(scan->getSubject().getVariable().name(), "?obj1");
-      ASSERT_EQ(scan->getObject().getVariable().name(), "?point1");
+      ASSERT_EQ(scan->subject().getVariable().name(), "?obj1");
+      ASSERT_EQ(scan->object().getVariable().name(), "?point1");
     } else {
       std::shared_ptr<Operation> op =
           spatialJoin->onlyForTestingGetRightChild()->getRootOperation();
       IndexScan* scan = static_cast<IndexScan*>(op.get());
-      ASSERT_EQ(scan->getSubject().getVariable().name(), "?obj2");
-      ASSERT_EQ(scan->getObject().getVariable().name(), "?point2");
+      ASSERT_EQ(scan->subject().getVariable().name(), "?obj2");
+      ASSERT_EQ(scan->object().getVariable().name(), "?point2");
     }
   };
 
@@ -1292,11 +1215,11 @@ TEST(SpatialJoin, getChildren) {
   auto assertScanVariables = [](IndexScan* scan1, IndexScan* scan2,
                                 bool isSubjectNotObject, std::string varName1,
                                 std::string varName2) {
-    std::string value1 = scan1->getSubject().getVariable().name();
-    std::string value2 = scan2->getSubject().getVariable().name();
+    std::string value1 = scan1->subject().getVariable().name();
+    std::string value2 = scan2->subject().getVariable().name();
     if (!isSubjectNotObject) {
-      value1 = scan1->getObject().getVariable().name();
-      value2 = scan2->getObject().getVariable().name();
+      value1 = scan1->object().getVariable().name();
+      value2 = scan2->object().getVariable().name();
     }
     ASSERT_TRUE(value1 == varName1 || value1 == varName2);
     ASSERT_TRUE(value2 == varName1 || value2 == varName2);
@@ -1429,8 +1352,13 @@ void testGetResultWidthOrVariableToColumnMap(bool leftSideBigChild,
                                 .value()
                                 .first;
         ASSERT_EQ(value, expectedColumns.at(i).second);
-      } else {
-        ASSERT_TRUE(false);  // this line should not be reachable (see dataset)
+      } else if (tableEntry.getDatatype() == Datatype::GeoPoint) {
+        auto [value, type] = ExportQueryExecutionTrees::idToStringAndType(
+                                 qec->getIndex(), tableEntry, {})
+                                 .value();
+        value = absl::StrCat("\"", value, "\"^^<", type, ">");
+        ASSERT_TRUE(value.find(expectedColumns.at(i).second, 0) !=
+                    string::npos);
       }
     }
   }
@@ -2118,3 +2046,5 @@ TEST(SpatialJoin, containedInBoundingBoxes) {
 }
 
 }  // namespace boundingBox
+
+}  // anonymous namespace

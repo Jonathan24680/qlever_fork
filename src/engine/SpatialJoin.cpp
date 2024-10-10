@@ -36,24 +36,18 @@ void SpatialJoin::parseMaxDistance() {
   std::string errormessage =
       "parsing of the maximum distance for the "
       "SpatialJoin operation was not possible";
-  auto throwIfNotADigit = [&](const char a) {
-    if (!isdigit(a)) {
-      AD_THROW(errormessage);
-    }
-  };
 
   if (ctre::match<MAX_DIST_IN_METERS_REGEX>(input)) {
     std::string number = input.substr(
         MAX_DIST_IN_METERS.size(),
         input.size() - MAX_DIST_IN_METERS.size() - 1);  // -1: compensate for >
-    std::ranges::for_each(number, throwIfNotADigit);
     maxDist_ = std::stoll(number);
   } else {
     AD_THROW(errormessage);
   }
 
   if (maxDist_ < 0) {
-    AD_THROW("the maximum distance between two objects must be > 0");
+    AD_THROW("the maximum distance between two objects must be >= 0");
   }
 }
 
@@ -227,23 +221,26 @@ std::string SpatialJoin::betweenQuotes(std::string extractFrom) const {
   }
 }
 
-std::string SpatialJoin::getPoint(const IdTable* restable, size_t row, ColumnIndex col) const {
-  return betweenQuotes(
-        ExportQueryExecutionTrees::idToStringAndType(
-            getExecutionContext()->getIndex(), restable->at(row, col), {})
-            .value()
-            .first);
+std::optional<GeoPoint> SpatialJoin::getPoint(const IdTable* restable,
+                      size_t row, ColumnIndex col) {
+  auto id = restable->at(row, col);
+  return id.getDatatype() == Datatype::GeoPoint
+              ? std::optional{id.getGeoPoint()}
+              : std::nullopt;
 }
 
 // ____________________________________________________________________________
-long long SpatialJoin::computeDist(const IdTable* resLeft,
-                                   const IdTable* resRight, size_t rowLeft,
-                                   size_t rowRight, ColumnIndex leftPointCol,
-                                   ColumnIndex rightPointCol) const {
-  std::string point1 = getPoint(resLeft, rowLeft, leftPointCol);
-  std::string point2 = getPoint(resRight, rowRight, rightPointCol);
-  double dist = ad_utility::detail::wktDistImpl(point1, point2);
-  return static_cast<long long>(dist * 1000);  // convert to meters
+Id SpatialJoin::computeDist(const IdTable* resLeft, const IdTable* resRight,
+                            size_t rowLeft, size_t rowRight,
+                            ColumnIndex leftPointCol,
+                            ColumnIndex rightPointCol) const {
+  auto point1 = getPoint(resLeft, rowLeft, leftPointCol);
+  auto point2 = getPoint(resRight, rowRight, rightPointCol);
+  if (!point1.has_value() || !point2.has_value()) {
+    return Id::makeUndefined();
+  }
+  return Id::makeFromInt(
+      ad_utility::detail::wktDistImpl(point1.value(), point2.value()) * 1000);
 }
 
 // ____________________________________________________________________________
@@ -251,7 +248,7 @@ void SpatialJoin::addResultTableEntry(IdTable* result,
                                       const IdTable* resultLeft,
                                       const IdTable* resultRight,
                                       size_t rowLeft, size_t rowRight,
-                                      long long distance) const {
+                                      Id distance) const {
   // this lambda function copies elements from copyFrom
   // into the table res. It copies them into the row
   // rowIndRes and column column colIndRes. It returns the column number
@@ -275,10 +272,10 @@ void SpatialJoin::addResultTableEntry(IdTable* result,
   rescol = addColumns(result, resultRight, resrow, rescol, rowRight);
 
   if (addDistToResult_) {
-    result->at(resrow, rescol) = ValueId::makeFromInt(distance);
+    result->at(resrow, rescol) = distance;
     // rescol isn't used after that in this function, but future updates,
     // which add additional columns, would need to remember to increase
-    // rescol at this place. If they forget to do this, the
+    // rescol at this place otherwise. If they forget to do this, the
     // distance column will be overwritten, the variableToColumnMap will
     // not work and so on
     // rescol += 1;
@@ -296,11 +293,19 @@ ColumnIndex SpatialJoin::getJoinCol(const std::shared_ptr<const QueryExecutionTr
 Result SpatialJoin::baselineAlgorithm() {
   auto getIdTable = [](std::shared_ptr<QueryExecutionTree> child) {
     std::shared_ptr<const Result> resTable = child->getResult();
-    return &resTable->idTable();
+    auto idTablePtr = &resTable->idTable();
+    return std::pair{idTablePtr, std::move(resTable)};
   };
 
-  const IdTable* resLeft = getIdTable(childLeft_);
-  const IdTable* resRight = getIdTable(childRight_);
+  auto getJoinCol = [](const std::shared_ptr<const QueryExecutionTree>& child,
+                       const Variable& childVariable) {
+    auto varColMap =
+        child->getRootOperation()->getExternallyVisibleVariableColumns();
+    return varColMap[childVariable].columnIndex_;
+  };
+
+  const auto [resLeft, keepAliveLeft] = getIdTable(childLeft_);
+  const auto [resRight, keepAliveRight] = getIdTable(childRight_);
   ColumnIndex leftJoinCol = getJoinCol(childLeft_, leftChildVariable_);
   ColumnIndex rightJoinCol = getJoinCol(childRight_, rightChildVariable_);
   size_t numColumns = getResultWidth();
@@ -310,9 +315,9 @@ Result SpatialJoin::baselineAlgorithm() {
   // objects
   for (size_t rowLeft = 0; rowLeft < resLeft->size(); rowLeft++) {
     for (size_t rowRight = 0; rowRight < resRight->size(); rowRight++) {
-      long long dist = computeDist(resLeft, resRight, rowLeft, rowRight,
-                                   leftJoinCol, rightJoinCol);
-      if (dist <= maxDist_) {
+      Id dist = computeDist(resLeft, resRight, rowLeft, rowRight, leftJoinCol,
+                            rightJoinCol);
+      if (dist.getDatatype() == Datatype::Int && dist.getInt() <= maxDist_) {
         addResultTableEntry(&result, resLeft, resRight, rowLeft, rowRight,
                             dist);
       }
@@ -536,19 +541,17 @@ Result SpatialJoin::boundingBoxAlgorithm() {
   for (size_t i = 0; i < smallerResult->numRows(); i++) {
     // get point of row i
     ColumnIndex smallerJoinCol = getJoinCol(smallerChild, smallerVariable);
-    std::string pointstr = getPoint(smallerResult, i, smallerJoinCol);
-    pointstr = betweenQuotes(pointstr);
-    auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
-    point p(lng1, lat1);
+    auto geopoint = getPoint(smallerResult, i, smallerJoinCol);
+    point p(geopoint.value().getLng(), geopoint.value().getLat());
+
     // add every point together with the row number into the rtree
     rtree.insert(std::make_pair(p, i));
   }
   for (size_t i = 0; i < otherResult->numRows(); i++) {
     ColumnIndex otherJoinCol = getJoinCol(otherChild, otherVariable);
-    std::string pointstr = getPoint(otherResult, i, otherJoinCol);
-    pointstr = betweenQuotes(pointstr);
-    auto [lng1, lat1] = ad_utility::detail::parseWktPoint(pointstr);
-    point p(lng1, lat1);
+    auto geopoint1 = getPoint(otherResult, i, otherJoinCol);
+    point p(geopoint1.value().getLng(), geopoint1.value().getLat());
+    
     // query the other rtree for every point using the following bounding box
     std::vector<box> bbox = computeBoundingBox(p);
     std::vector<value> results;
@@ -563,7 +566,7 @@ Result SpatialJoin::boundingBoxAlgorithm() {
         rowRight = results.at(k).second;
       }
       auto distance = computeDist(resLeft, resRight, rowLeft, rowRight, leftJoinCol, rightJoinCol);
-      if (distance <= maxDist_) {
+      if (distance.getDatatype() == Datatype::Int && distance.getInt() <= maxDist_) {
         addResultTableEntry(&result, resLeft, resRight, rowLeft, rowRight, distance);
       }
     }
@@ -585,7 +588,6 @@ Result SpatialJoin::computeResult([[maybe_unused]] bool requestLaziness) {
 VariableToColumnMap SpatialJoin::computeVariableToColumnMap() const {
   VariableToColumnMap variableToColumnMap;
   auto makeUndefCol = makePossiblyUndefinedColumn;
-  auto makeDefCol = makeAlwaysDefinedColumn;
 
   if (!(childLeft_ || childRight_)) {
     // none of the children has been added
@@ -605,16 +607,9 @@ VariableToColumnMap SpatialJoin::computeVariableToColumnMap() const {
       std::ranges::for_each(
           varColsVec,
           [&](const std::pair<Variable, ColumnIndexAndTypeInfo>& varColEntry) {
-            if (varColEntry.second.mightContainUndef_ ==
-                ColumnIndexAndTypeInfo::AlwaysDefined) {
-              variableToColumnMap[varColEntry.first] = makeDefCol(
-                  ColumnIndex{offset + varColEntry.second.columnIndex_});
-            } else {
-              AD_CONTRACT_CHECK(varColEntry.second.mightContainUndef_ ==
-                                ColumnIndexAndTypeInfo::PossiblyUndefined);
-              variableToColumnMap[varColEntry.first] = makeUndefCol(
-                  ColumnIndex{offset + varColEntry.second.columnIndex_});
-            }
+            auto colAndType = varColEntry.second;  // Type info already correct
+            colAndType.columnIndex_ += offset;
+            variableToColumnMap[varColEntry.first] = colAndType;
           });
     };
 
@@ -625,7 +620,7 @@ VariableToColumnMap SpatialJoin::computeVariableToColumnMap() const {
 
     if (addDistToResult_) {
       variableToColumnMap[Variable{nameDistanceInternal_}] =
-          makeDefCol(ColumnIndex{sizeLeft + sizeRight});
+          makeUndefCol(ColumnIndex{sizeLeft + sizeRight});
     }
   }
 

@@ -48,11 +48,13 @@ struct Service {
   // The visible variables of the service clause.
   std::vector<Variable> visibleVariables_;
   // The URL of the service clause.
-  Iri serviceIri_;
+  TripleComponent::Iri serviceIri_;
   // The prologue (prefix definitions).
   std::string prologue_;
   // The body of the SPARQL query for the remote endpoint.
   std::string graphPatternAsString_;
+  // The existence of the `SILENT`-keyword.
+  bool silent_;
 };
 
 /// A `BasicGraphPattern` represents a consecutive block of triples.
@@ -74,6 +76,11 @@ struct Values {
 /// `GraphPattern`.
 struct GroupGraphPattern {
   GraphPattern _child;
+  // If not `monostate`, then this group is a `GRAPH` clause, either with a
+  // fixed graph IRI, or with a variable.
+  using GraphSpec =
+      std::variant<std::monostate, TripleComponent::Iri, Variable>;
+  GraphSpec graphSpec_ = std::monostate{};
 };
 
 /// An `OPTIONAL` clause.
