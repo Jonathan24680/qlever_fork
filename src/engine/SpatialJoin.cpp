@@ -222,7 +222,7 @@ std::string SpatialJoin::betweenQuotes(std::string extractFrom) const {
 }
 
 std::optional<GeoPoint> SpatialJoin::getPoint(const IdTable* restable,
-                      size_t row, ColumnIndex col) {
+                      size_t row, ColumnIndex col) const {
   auto id = restable->at(row, col);
   return id.getDatatype() == Datatype::GeoPoint
               ? std::optional{id.getGeoPoint()}

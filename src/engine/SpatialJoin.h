@@ -94,8 +94,6 @@ class SpatialJoin : public Operation {
     return nameDistanceInternal_;
   }
 
-  std::string getPoint(const IdTable* restable, size_t row, ColumnIndex col) const;
-
   // this function computes the bounding box(es), which represent all points, which
   // are in reach of the starting point with a distance of at most maxDistanceInMeters
   std::vector<box> computeBoundingBox(const point& startPoint);
@@ -125,7 +123,7 @@ class SpatialJoin : public Operation {
 
   // helper function, which gets the point of an id table
   std::optional<GeoPoint> getPoint(const IdTable* restable, size_t row,
-                      ColumnIndex col);
+                      ColumnIndex col) const;
 
   // helper function, which computes the distance of two points, where each
   // point comes from a different result table

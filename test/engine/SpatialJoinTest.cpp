@@ -1810,16 +1810,6 @@ TEST(SpatialJoin, getSizeEstimate) {
   testMultiplicitiesOrSizeEstimate(true, false);
 }
 
-TEST(SpatialJoin, getCostEstimateBaselineAlgorithm) {
-  // onlyForTestingSetUseBaselineAlgorithm(true);
-  ASSERT_TRUE(false);  // TODO
-}
-
-TEST(SpatialJoin, getCostEstimateBoundingBoxAlgorithm) {
-  // onlyForTestingSetUseBaselineAlgorithm(false);
-  ASSERT_TRUE(false);  // TODO
-}
-
 }  // namespace getMultiplicityAndSizeEstimate
 
 namespace boundingBox {
@@ -1832,20 +1822,14 @@ typedef bg::model::box<point> box;
 typedef std::pair<point, size_t> value;
 
 inline void testBoundingBox(const long long& maxDistInMeters, const point& startPoint) {
-  auto convertToStr = [](const point& point1) {
-    auto lon = absl::StrFormat("%.6f", point1.get<0>());
-    auto lat = absl::StrFormat("%.6f", point1.get<1>());
-    return absl::StrCat("POINT(", lon, " ", lat, ")");
-  };
-
   auto checkOutside = [&](const point& point1, const point& startPoint, 
                           const std::vector<box>& bbox, SpatialJoin* spatialJoin) {
     // check if the point is contained in any bounding box
     bool within = spatialJoin->containedInBoundingBoxes(bbox, point1);
       if (!within) {
-        std::string strp1 = convertToStr(point1);
-        std::string strp2 = convertToStr(startPoint);
-        double dist = ad_utility::detail::wktDistImpl(strp1, strp2) * 1000;
+        GeoPoint geo1{point1.get<1>(), point1.get<0>()};
+        GeoPoint geo2{startPoint.get<1>(), startPoint.get<0>()};
+        double dist = ad_utility::detail::wktDistImpl(geo1, geo2) * 1000;
         ASSERT_GT(static_cast<long long>(dist), maxDistInMeters);
       }
   };
