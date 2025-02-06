@@ -7,6 +7,7 @@
 #include <fstream>
 #include <regex>
 #include <variant>
+#include <ctime>
 
 #include "../util/IndexTestHelpers.h"
 #include "./../../src/util/GeoSparqlHelpers.h"
@@ -1634,5 +1635,19 @@ TEST(SpatialJoin, trueAreaDistance) {
 }
 
 }  // namespace boundingBox
+
+namespace evaluation {
+
+TEST(SpatialJoin, evaluation) {
+  clock_t startTime = clock();
+  std::ofstream fileStream("evaluation_data.txt");
+  fileStream << "pretend this is importand data" << std::endl;
+  clock_t duration = clock() - startTime;
+  fileStream << "time for opening fstream: ";
+  fileStream << (float)duration/CLOCKS_PER_SEC << "seconds" << std::endl;
+  fileStream.close();
+}
+
+}
 
 }  // namespace
