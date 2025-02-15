@@ -1755,7 +1755,7 @@ string createTestKnowledgeGraph(bool verbose) {
           auto a = (i * 0.333333) + lon;
           auto b = (k * 0.333333) + lat;
           *kg += std::to_string(a) + " " + std::to_string(b);
-          if (i != 3 || k != 3) {
+          if (i != 2 || k != 2) {
             *kg += ", ";
           }
         }
@@ -1777,8 +1777,8 @@ string createTestKnowledgeGraph(bool verbose) {
 
   string kg = "";  // knowlegde graph
   // for loop to iterate over the longitudes
-  for (int lat = -90; lat <= 90; lat++) {  // iterate over longitude
-    for (int lon = -180; lon < 180; lon++) {  // iterate over latitude
+  for (int lat = -90; lat <= 90; lat++) {  // iterate over latitude
+    for (int lon = -180; lon < 180; lon++) {  // iterate over longitude
       if (lat == -90 || lat == 90) {
         // only add one point for the poles
         addPoint(&kg, 0, lat);
