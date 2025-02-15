@@ -1671,19 +1671,19 @@ namespace evaluation {
 // this function creates an input as a test set and returns it
 string createTestKnowledgeGraph(bool verbose) {
   auto addPoint = [] (string* kg, double lon, double lat) {
-    string name = "Point_" + std::to_string(lon) + "_"
-                        + std::to_string(lat) + "";
+    string name = "<Point_" + std::to_string(lon) + "_"
+                        + std::to_string(lat) + ">";
     *kg += "";
 
     *kg += name;
     *kg += " <isPoint> <true> .\n";
     
     *kg += name;
-    *kg += " geo:asWKT Point(";
+    *kg += " <asWKT> \"Point(";
     *kg += std::to_string(lon);
     *kg += " ";
     *kg += std::to_string(lat);
-    *kg += ")^^geo:wktLiteral .\n";
+    *kg += ")\"^^geo:wktLiteral .\n";
     double fraction = std::abs(lon - (int)lon);
     if (fraction > 0.49 && fraction < 0.51) {
       *kg += name;
@@ -1758,17 +1758,17 @@ string createTestKnowledgeGraph(bool verbose) {
       }
       *kg += ")";
     };
-    string name = "Area_" + std::to_string(lon) + "_"
-                        + std::to_string(lat) + "";
+    string name = "<Area_" + std::to_string(lon) + "_"
+                        + std::to_string(lat) + ">";
     *kg += "";
     
     *kg += name;
     *kg += " <isPoint> <false> .\n";
 
     *kg += name;
-    *kg += " geo:asWKT Polygon(";
+    *kg += " <asWKT> \"Polygon(";
     createPolygonCoordinates(kg, lon, lat);
-    *kg += ")^^geo:wktLiteral .\n";
+    *kg += ")\"^^geo:wktLiteral .\n";
   };
 
   string kg = "";  // knowlegde graph
