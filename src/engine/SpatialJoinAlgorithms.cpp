@@ -597,8 +597,8 @@ std::vector<Box> SpatialJoinAlgorithms::getQueryBox(
 void addTimeStamp(string& data, string_view name) {
   data += name;
   data += " ";
-  clock_t time = clock();
-  data += (float)time/CLOCKS_PER_SEC;
+  std::time_t time = std::time(nullptr);
+  data += std::to_string(time);
   data += "\n";
 }
 
