@@ -1067,7 +1067,7 @@ void testBoundingBox(const size_t& maxDistInMeters, const Point& startPoint) {
   SpatialJoinAlgorithms spatialJoinAlgs =
       getDummySpatialJoinAlgsForWrapperTesting(maxDistInMeters);
 
-  std::vector<Box> bbox = spatialJoinAlgs.computeBoundingBox(startPoint);
+  std::vector<Box> bbox = spatialJoinAlgs.computeQueryBox(startPoint);
   // broad grid test
   for (int lon = -180; lon < 180; lon += 20) {
     for (int lat = -90; lat < 90; lat += 20) {
@@ -1571,8 +1571,8 @@ TEST(SpatialJoin, areaFormat) {
 }
 
 TEST(SpatialJoin, trueAreaDistance) {
-  auto testDist = [](QueryExecutionContext* qec, std::string nr1,
-                     std::string nr2, double distance) {
+  auto getDist = [](QueryExecutionContext* qec, std::string nr1,
+                    std::string nr2, bool useMidpointForAreas) {
     auto makeIndexScan = [&](std::string nr) {
       auto subject = absl::StrCat("<geometry", nr, ">");
       auto objStr = absl::StrCat("?obj", nr);
@@ -1601,37 +1601,71 @@ TEST(SpatialJoin, trueAreaDistance) {
         spatialJoin->onlyForTestingGetPrepareJoin();
     SpatialJoinAlgorithms algorithms{
         qec, params, spatialJoin->onlyForTestingGetConfig(), std::nullopt};
-    algorithms.setUseMidpointForAreas_(false);
-    auto distID =
-        algorithms.computeDist(params.idTableLeft_, params.idTableRight_, 0, 0,
-                               params.leftJoinCol_, params.rightJoinCol_);
-    ASSERT_EQ(distID.getDatatype(), Datatype::Double);
-    // ASSERT_DOUBLE_EQ did not work for some reason. An example of a thrown
-    // error: Expected equality of these values:
-    //  distID.getDouble()
-    //    Which is: 353.83499999999913
-    //  distance
-    //    Which is: 353.83499999999998
-    ASSERT_TRUE(distID.getDouble() > 0.99999 * distance);
-    ASSERT_TRUE(distID.getDouble() < 1.00001 * distance);
+    algorithms.setUseMidpointForAreas_(useMidpointForAreas);
+    auto entryLeft = algorithms.onlyForTestingGetRtreeEntry(
+        params.idTableLeft_, 0, params.leftJoinCol_);
+    auto entryRight = algorithms.onlyForTestingGetRtreeEntry(
+        params.idTableRight_, 0, params.rightJoinCol_);
+    auto distID = algorithms.computeDist(entryLeft.value(), entryRight.value());
+    return distID.getDouble();
   };
-  auto qec = getAllGeometriesQEC();
-  double conversionFactor = 78.630;  // convert to meters
-  testDist(qec, "1", "2", 0.5 * conversionFactor);
-  testDist(qec, "1", "3", 1.5 * conversionFactor);
-  testDist(qec, "1", "4", 2.5 * conversionFactor);
-  testDist(qec, "1", "5", 3.5 * conversionFactor);
-  testDist(qec, "1", "6", 4.5 * conversionFactor);
-  testDist(qec, "2", "3", 0.5 * conversionFactor);
-  testDist(qec, "2", "4", 1.5 * conversionFactor);
-  testDist(qec, "2", "5", 2.5 * conversionFactor);
-  testDist(qec, "2", "6", 3.5 * conversionFactor);
-  testDist(qec, "3", "4", 0.5 * conversionFactor);
-  testDist(qec, "3", "5", 1.5 * conversionFactor);
-  testDist(qec, "3", "6", 2.5 * conversionFactor);
-  testDist(qec, "4", "5", 0.5 * conversionFactor);
-  testDist(qec, "4", "6", 1.5 * conversionFactor);
-  testDist(qec, "5", "6", 0.5 * conversionFactor);
+  auto qec = buildMixedAreaPointQEC(true);
+
+  // the following tests all calculate the distance from germany to each point.
+  // When the areas get approximated by their midpoint, the distance should
+  // always be larger or at least equally large compared to areas not being
+  // approximated by their midpoint.
+  ASSERT_TRUE(getDist(qec, "Area6", "1", true) >=
+              getDist(qec, "Area6", "1", false));
+  ASSERT_TRUE(getDist(qec, "Area6", "Area2", true) >=
+              getDist(qec, "Area6", "Area2", false));
+  ASSERT_TRUE(getDist(qec, "Area6", "3", true) >=
+              getDist(qec, "Area6", "3", false));
+  ASSERT_TRUE(getDist(qec, "Area6", "Area4", true) >=
+              getDist(qec, "Area6", "Area4", false));
+  ASSERT_TRUE(getDist(qec, "Area6", "5", true) >=
+              getDist(qec, "Area6", "5", false));
+  ASSERT_TRUE(getDist(qec, "Area6", "Area6", true) >=
+              getDist(qec, "Area6", "Area6", false));
+}
+
+TEST(SpatialJoin, mixedDataSet) {
+  auto testDist = [](QueryExecutionContext* qec, size_t maxDist,
+                     size_t nrResultRows) {
+    auto leftChild =
+        buildIndexScan(qec, {"?obj1", std::string{"<asWKT>"}, "?geo1"});
+    auto rightChild =
+        buildIndexScan(qec, {"?obj2", std::string{"<asWKT>"}, "?geo2"});
+
+    std::shared_ptr<QueryExecutionTree> spatialJoinOperation =
+        ad_utility::makeExecutionTree<SpatialJoin>(
+            qec,
+            SpatialJoinConfiguration{MaxDistanceConfig(maxDist),
+                                     Variable{"?geo1"}, Variable{"?geo2"}},
+            leftChild, rightChild);
+
+    std::shared_ptr<Operation> op = spatialJoinOperation->getRootOperation();
+    SpatialJoin* spatialJoin = static_cast<SpatialJoin*>(op.get());
+    spatialJoin->selectAlgorithm(SpatialJoinAlgorithm::BOUNDING_BOX);
+    PreparedSpatialJoinParams params =
+        spatialJoin->onlyForTestingGetPrepareJoin();
+    SpatialJoinAlgorithms algorithms{
+        qec, params, spatialJoin->onlyForTestingGetConfig(), std::nullopt};
+    algorithms.setUseMidpointForAreas_(false);
+    auto res = algorithms.BoundingBoxAlgorithm();
+    // that the id table contains all the necessary other columns and gets
+    // constructed correctly has already been extensively tested elsewhere.
+    // Here we only test, that the distance between GeoPoints and areas gets
+    // computed correctly. For this purpose it is sufficient to check the number
+    // of rows in the result table
+    ASSERT_EQ(res.idTable().numRows(), nrResultRows);
+  };
+  auto qec = buildMixedAreaPointQEC();
+  testDist(qec, 1, 5);
+  testDist(qec, 5000, 7);
+  testDist(qec, 500000, 13);
+  testDist(qec, 1000000, 17);
+  testDist(qec, 10000000, 25);
 }
 
 }  // namespace boundingBox

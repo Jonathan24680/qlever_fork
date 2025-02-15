@@ -14,6 +14,7 @@
 
 #include "engine/Result.h"
 #include "engine/SpatialJoin.h"
+#include "util/GeoSparqlHelpers.h"
 
 namespace BoostGeometryNamespace {
 namespace bg = boost::geometry;
@@ -29,6 +30,7 @@ using MultiLinestring = bg::model::multi_linestring<Linestring>;
 using MultiPolygon = bg::model::multi_polygon<Polygon>;
 using AnyGeometry = boost::variant<Point, Linestring, Polygon, MultiPoint,
                                    MultiLinestring, MultiPolygon>;
+using Segment = boost::geometry::model::segment<Point>;
 
 // this struct is used to get the bounding box of an arbitrary geometry type.
 struct BoundingBoxVisitor : public boost::static_visitor<Box> {
@@ -40,22 +42,31 @@ struct BoundingBoxVisitor : public boost::static_visitor<Box> {
   }
 };
 
-// this struct is used to get the distance between two arbitrary geometry types
-struct DistanceVisitor : public boost::static_visitor<double> {
+// this struct is used to calculate the distance between two arbitrary
+// geometries. It calculates the two closest points (in euclidean geometry),
+// transforms the two closest points, to a GeoPoint and then calculates the
+// distance of the two points on the earth. As the closest points are calculated
+// using euclidean geometry, this is only an approximation. On the sphere two
+// other points might be closer.
+struct ClosestPointVisitor : public boost::static_visitor<double> {
   template <typename Geometry1, typename Geometry2>
-  double operator()(const Geometry1& geom1, const Geometry2& geom2) const {
-    return bg::distance(geom1, geom2);
+  double operator()(const Geometry1& geo1, const Geometry2& geo2) const {
+    Segment seg;
+    bg::closest_points(geo1, geo2, seg);
+    GeoPoint closestPoint1(bg::get<0, 1>(seg), bg::get<0, 0>(seg));
+    GeoPoint closestPoint2(bg::get<1, 1>(seg), bg::get<1, 0>(seg));
+    return ad_utility::detail::wktDistImpl(closestPoint1, closestPoint2);
   }
 };
 
-struct rtreeEntry {
+struct RtreeEntry {
   size_t row_;
-  std::optional<AnyGeometry> geometry_;
+  std::optional<size_t> geometryIndex_;
   std::optional<GeoPoint> geoPoint_;
   std::optional<Box> boundingBox_;
 };
 
-using Value = std::pair<Box, rtreeEntry>;
+using Value = std::pair<Box, RtreeEntry>;
 
 }  // namespace BoostGeometryNamespace
 
@@ -63,7 +74,7 @@ class SpatialJoinAlgorithms {
   using Point = BoostGeometryNamespace::Point;
   using Box = BoostGeometryNamespace::Box;
   using AnyGeometry = BoostGeometryNamespace::AnyGeometry;
-  using rtreeEntry = BoostGeometryNamespace::rtreeEntry;
+  using RtreeEntry = BoostGeometryNamespace::RtreeEntry;
 
  public:
   // initialize the Algorithm with the needed parameters
@@ -90,8 +101,8 @@ class SpatialJoinAlgorithms {
   // midpoint of the bounding box of the area to any point inside the area.
   // The function getMaxDistFromMidpointToAnyPointInsideTheBox() can be used to
   // calculate it.
-  std::vector<Box> computeBoundingBox(const Point& startPoint,
-                                      double additionalDist = 0) const;
+  std::vector<Box> computeQueryBox(const Point& startPoint,
+                                   double additionalDist = 0) const;
 
   // This function returns true, iff the given point is contained in any of the
   // bounding boxes
@@ -106,14 +117,8 @@ class SpatialJoinAlgorithms {
   }
 
   // Helper function, which computes the distance of two geometries, where each
-  // geometry comes from a different result table
-  Id computeDist(const IdTable* resLeft, const IdTable* resRight,
-                 size_t rowLeft, size_t rowRight, ColumnIndex leftPointCol,
-                 ColumnIndex rightPointCol) const;
-
-  // Helper function, which computes the distance of two geometries, where each
-  // geometry has already been parsed and is available as an rtreeEntry
-  Id computeDist(const rtreeEntry& geo1, const rtreeEntry& geo2) const;
+  // geometry has already been parsed and is available as an RtreeEntry
+  Id computeDist(RtreeEntry& geo1, RtreeEntry& geo2);
 
   // this function calculates the maximum distance from the midpoint of the box
   // to any other point, which is contained in the box. If the midpoint has
@@ -124,8 +129,15 @@ class SpatialJoinAlgorithms {
       const Box& box, std::optional<Point> midpoint = std::nullopt) const;
 
   // this function gets the string which represents the area from the idtable.
-  std::optional<AnyGeometry> getAnyGeometry(const IdTable* idtable, size_t row,
-                                            size_t col) const;
+  std::optional<size_t> getAnyGeometry(const IdTable* idtable, size_t row,
+                                       size_t col);
+
+  // wrapper to access non const private function for testing
+  std::optional<RtreeEntry> onlyForTestingGetRtreeEntry(const IdTable* idTable,
+                                                        const size_t row,
+                                                        const ColumnIndex col) {
+    return getRtreeEntry(idTable, row, col);
+  }
 
  private:
   // Helper function which returns a GeoPoint if the element of the given table
@@ -152,7 +164,7 @@ class SpatialJoinAlgorithms {
   // gets used, when the usual procedure, would just result in taking a big
   // bounding box, which covers the whole planet (so for extremely large max
   // distances)
-  std::vector<Box> computeBoundingBoxForLargeDistances(
+  std::vector<Box> computeQueryBoxForLargeDistances(
       const Point& startPoint) const;
 
   // this helper function approximates a conversion of the distance between two
@@ -163,11 +175,25 @@ class SpatialJoinAlgorithms {
   // Only for the poles, the conversion will be way to large (for the longitude
   // difference). Note, that this function is expensive and should only be
   // called when needed
-  double computeDist(const AnyGeometry& geometry1,
-                     const AnyGeometry& geometry2) const;
+  double computeDist(const size_t geometryIndex1,
+                     const size_t geometryIndex2) const;
+
+  // this helper function takes an idtable, a row and a column. It then tries
+  // to parse a geometry or a geoPoint of that cell in the idtable. If it
+  // succeeds, it returns an rtree entry of that geometry/geopoint
+  std::optional<RtreeEntry> getRtreeEntry(const IdTable* idTable,
+                                          const size_t row,
+                                          const ColumnIndex col);
 
   // this helper function converts a GeoPoint into a boost geometry Point
-  Point convertGeoPointToPoint(GeoPoint point) const;
+  size_t convertGeoPointToPoint(GeoPoint point);
+
+  // this helper function calculates the query box. The query box, is the box,
+  // which contains the area, where all possible candidates of the max distance
+  // query must be contained in. It returns a vector, because if the box crosses
+  // the poles or the -180/180 longitude line, then it is disjoint in the
+  // cartesian coordinates. The boxes themselves are disjoint to each other.
+  std::vector<Box> getQueryBox(const std::optional<RtreeEntry>& entry) const;
 
   QueryExecutionContext* qec_;
   PreparedSpatialJoinParams params_;
@@ -193,4 +219,13 @@ class SpatialJoinAlgorithms {
 
   // return whether one of the poles is being touched
   std::array<bool, 2> isAPoleTouched(const double& latitude) const;
+
+  // number of times the parsing of a geometry failed. For now this is only used
+  // to print the warning once, but it could also be used to print how many
+  // geometries failed. It is mutable to let parsing function which are const
+  // still modify the the nr of failed parsings.
+  size_t numFailedParsedGeometries_ = 0;
+
+  // this vector stores the geometries, which have already been parsed
+  std::vector<AnyGeometry> geometries_;
 };
