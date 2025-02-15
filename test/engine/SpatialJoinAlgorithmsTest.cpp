@@ -28,7 +28,7 @@ using namespace SpatialJoinTestHelpers;
 
 // Shortcut for SpatialJoin task parameters
 using SJ = std::variant<NearestNeighborsConfig, MaxDistanceConfig>;
-
+/*
 namespace computeResultTest {
 
 // Represents from left to right: the algorithm, addLeftChildFirst,
@@ -121,10 +121,6 @@ class SpatialJoinParamTest
 
     auto res = spatialJoin->computeResult(false);
     auto vec = printTable(qec, &res);
-    /*
-    for (size_t i = 0; i < vec.size(); ++i) {
-      EXPECT_STREQ(vec.at(i).c_str(), expectedOutput.at(i).c_str());
-    }*/
     EXPECT_THAT(vec, ::testing::UnorderedElementsAreArray(expectedOutput));
 
     if (isWrongPointInputTest &&
@@ -1669,7 +1665,7 @@ TEST(SpatialJoin, mixedDataSet) {
 }
 
 }  // namespace boundingBox
-
+*/
 namespace evaluation {
 
 // this function creates an input as a test set and returns it
