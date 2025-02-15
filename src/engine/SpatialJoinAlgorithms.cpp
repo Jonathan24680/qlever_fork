@@ -708,5 +708,7 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
   std::ofstream fileStream("./local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationBuildSmallerRtree.txt", std::ios_base::app);
   fileStream << evalData << std::endl;
   fileStream.close();
+  std::cerr << "should have written the file with content" << std::endl;
+  std::cerr << evalData << std::endl;
   return resTable;
 }
