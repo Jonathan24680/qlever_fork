@@ -1777,11 +1777,11 @@ string createTestKnowledgeGraph(bool verbose) {
 
   string kg = "";  // knowlegde graph
   // for loop to iterate over the longitudes
-  for (int lon = -90; lon <= 90; lon++) {  // iterate over longitude
-    for (int lat = -180; lat < 180; lat++) {  // iterate over latitude
-      if (lon == -90 || lon == 90) {
+  for (int lon = -180; lon < 180; lon++) {  // iterate over longitude
+    for (int lat = -90; lat < 90; lat++) {  // iterate over latitude
+      if (lat == -90 || lat == 90) {
         // only add one point for the poles
-        addPoint(&kg, lon, 0);
+        addPoint(&kg, 0, lat);
         break;
       }
       
@@ -1789,8 +1789,8 @@ string createTestKnowledgeGraph(bool verbose) {
       addPoint(&kg, lon, lat);
       if (!verbose) {
         if (lon % 2 == 1
-              || (lat > -160 && lat < -20)
-              || (lat > 20 && lat < 160) ) {
+              || (lon > -160 && lon < -20)
+              || (lon > 20 && lon < 160) ) {
           continue;
         }
       }
