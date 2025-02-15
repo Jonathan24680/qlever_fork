@@ -13,6 +13,8 @@
 
 #include <cmath>
 #include <set>
+#include <fstream>
+#include <ctime>
 
 #include "engine/ExportQueryExecutionTrees.h"
 #include "engine/SpatialJoin.h"
@@ -703,5 +705,6 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
       Result(std::move(result), std::vector<ColumnIndex>{},
              Result::getMergedLocalVocab(*resultLeft, *resultRight));
   addTimeStamp(evalData, "end of boundingBox algorithm");
+  std::ofstream fileStream("./local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationBuildSmallerRtree.txt", std::ios_base::app);
   return resTable;
 }
