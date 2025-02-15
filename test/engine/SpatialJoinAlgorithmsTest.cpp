@@ -1794,6 +1794,7 @@ string createTestKnowledgeGraph(bool verbose) {
           continue;
         }
       }
+      addArea(&kg, lon, lat);
       
       addPoint(&kg, lon, lat + 1/3.0);
       addPoint(&kg, lon, lat + 1/2.0);
