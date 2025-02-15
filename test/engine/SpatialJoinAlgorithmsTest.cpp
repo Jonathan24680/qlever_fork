@@ -1683,7 +1683,7 @@ string createTestKnowledgeGraph(bool verbose) {
     *kg += std::to_string(lon);
     *kg += " ";
     *kg += std::to_string(lat);
-    *kg += ")\"^^geo:wktLiteral .\n";
+    *kg += ")\"^^<http://www.opengis.net/ont/geosparql#wktLiteral> .\n";
     double fraction = std::abs(lon - (int)lon);
     if (fraction > 0.49 && fraction < 0.51) {
       *kg += name;
@@ -1768,7 +1768,7 @@ string createTestKnowledgeGraph(bool verbose) {
     *kg += name;
     *kg += " <asWKT> \"Polygon(";
     createPolygonCoordinates(kg, lon, lat);
-    *kg += ")\"^^geo:wktLiteral .\n";
+    *kg += ")\"^^<http://www.opengis.net/ont/geosparql#wktLiteral> .\n";
   };
 
   string kg = "";  // knowlegde graph
