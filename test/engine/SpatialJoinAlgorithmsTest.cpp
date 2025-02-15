@@ -1825,7 +1825,7 @@ TEST(SpatialJoin, evaluation) {
   clock_t duration = clock() - startTime;
   //fileStream << "time for opening fstream: ";
   //fileStream << (float)duration/CLOCKS_PER_SEC << "seconds" << std::endl;
-  std::cerr << "time: " yy (float)duration/CLOCKS_PER_SEC << "seconds" << std::endl;
+  std::cerr << "time: " << (float)duration/CLOCKS_PER_SEC << "seconds" << std::endl;
   fileStream.close();
 }
 
