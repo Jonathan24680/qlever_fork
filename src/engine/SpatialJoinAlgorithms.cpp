@@ -592,8 +592,23 @@ std::vector<Box> SpatialJoinAlgorithms::getQueryBox(
   }
 }
 
+void addTimeStamp(string& data, string_view name) {
+  data += name;
+  data += " ";
+  clock_t time = clock();
+  data += (float)time/CLOCKS_PER_SEC;
+  data += "\n";
+}
+
+void addInformation(string& data) {
+  data += "information\n";
+}
+
 // ____________________________________________________________________________
 Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
+  std::string evalData = "";
+  addInformation(evalData);
+  addTimeStamp(evalData, "start of BoundingBoxAlgorithm");
   // helper struct to avoid duplicate entries for areas
   struct AddedPair {
     size_t rowLeft_;
@@ -687,5 +702,6 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
   auto resTable =
       Result(std::move(result), std::vector<ColumnIndex>{},
              Result::getMergedLocalVocab(*resultLeft, *resultRight));
+  addTimeStamp(evalData, "end of boundingBox algorithm");
   return resTable;
 }
