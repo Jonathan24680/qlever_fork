@@ -1752,8 +1752,8 @@ string createTestKnowledgeGraph(bool verbose) {
       // create a Polygon with 9 points
       for(size_t i = 0; i < 3; i++) {
         for(size_t k = 0; k < 3; k++) {
-          auto a = (1/i) + lon;
-          auto b = (1/k) + lat;
+          auto a = (1.0/i) + lon;
+          auto b = (1.0/k) + lat;
           *kg += std::to_string(a) + " " + std::to_string(b);
           if (i != 3 || k != 3) {
             *kg += ", ";
