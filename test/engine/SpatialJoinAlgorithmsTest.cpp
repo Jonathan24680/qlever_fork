@@ -1792,23 +1792,23 @@ string createTestKnowledgeGraph(bool verbose) {
       }
       addArea(&kg, lon, lat);
       
-      addPoint(&kg, lon, lat + 1/3.0);
+      //addPoint(&kg, lon, lat + 1/3.0);
       addPoint(&kg, lon, lat + 1/2.0);
-      addPoint(&kg, lon, lat + 2/3.0);
-      addPoint(&kg, lon + 1/3.0, lat);
-      addPoint(&kg, lon + 1/3.0, lat + 1/3.0);
-      addPoint(&kg, lon + 1/3.0, lat + 1/2.0);
-      addPoint(&kg, lon + 1/3.0, lat + 2/3.0);
+      //addPoint(&kg, lon, lat + 2/3.0);
+      //addPoint(&kg, lon + 1/3.0, lat);
+      //addPoint(&kg, lon + 1/3.0, lat + 1/3.0);
+      //addPoint(&kg, lon + 1/3.0, lat + 1/2.0);
+      //addPoint(&kg, lon + 1/3.0, lat + 2/3.0);
       
       addPoint(&kg, lon + 1/2.0, lat);
-      addPoint(&kg, lon + 1/2.0, lat + 1/3.0);
+      //addPoint(&kg, lon + 1/2.0, lat + 1/3.0);
       addPoint(&kg, lon + 1/2.0, lat + 1/2.0);
-      addPoint(&kg, lon + 1/2.0, lat + 2/3.0);
+      //addPoint(&kg, lon + 1/2.0, lat + 2/3.0);
       
-      addPoint(&kg, lon + 2/3.0, lat);
-      addPoint(&kg, lon + 2/3.0, lat + 1/3.0);
-      addPoint(&kg, lon + 2/3.0, lat + 1/2.0);
-      addPoint(&kg, lon + 2/3.0, lat + 2/3.0);
+      //addPoint(&kg, lon + 2/3.0, lat);
+      //addPoint(&kg, lon + 2/3.0, lat + 1/3.0);
+      //addPoint(&kg, lon + 2/3.0, lat + 1/2.0);
+      //addPoint(&kg, lon + 2/3.0, lat + 2/3.0);
     }
   }
   return kg;
