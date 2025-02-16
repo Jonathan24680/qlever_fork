@@ -184,6 +184,9 @@ void SpatialJoinAlgorithms::addResultTableEntry(IdTable* result,
 
 // ____________________________________________________________________________
 Result SpatialJoinAlgorithms::BaselineAlgorithm() {
+  clock_t startTime = clock();
+  addInformation("Baseline");
+  addTimeStamp("start_BaselineAlgorithm");
   const auto [idTableLeft, resultLeft, idTableRight, resultRight, leftJoinCol,
               rightJoinCol, rightSelectedCols, numColumns, maxDist,
               maxResults] = params_;
@@ -209,6 +212,11 @@ Result SpatialJoinAlgorithms::BaselineAlgorithm() {
 
     // Inner loop of cartesian product
     for (size_t rowRight = 0; rowRight < idTableRight->size(); rowRight++) {
+      clock_t duration = clock() - startTime;
+      if ((float)duration/CLOCKS_PER_SEC > 4) {
+        addTimeStamp("TIMEOUT");
+        AD_FAIL();
+      }
       auto entryRight = getRtreeEntry(idTableRight, rowRight, rightJoinCol);
 
       if (!entryLeft || !entryRight) {
@@ -253,6 +261,12 @@ Result SpatialJoinAlgorithms::BaselineAlgorithm() {
       }
     }
   }
+  addTimeStamp("stop_BaselineAlgorithm");
+  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationBaselineAlg.txt", std::ios_base::app);
+  fileStream << evalData << std::endl;
+  fileStream.close();
+  std::cerr << "added the following content to the file:" << std::endl;
+  std::cerr << evalData << std::endl;
   return Result(std::move(result), std::vector<ColumnIndex>{},
                 Result::getMergedLocalVocab(*resultLeft, *resultRight));
 }
