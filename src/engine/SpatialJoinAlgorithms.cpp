@@ -604,7 +604,7 @@ void addTimeStamp(string& data, string name) {
 }
 
 void SpatialJoinAlgorithms::addInformation(string& data, string algorithm) {
-  data += "time in ms\n";
+  data += "\n\ntime in ms\n";
   data += "maxDist: " + std::to_string(params_.maxDist_.value()) + "\n";
   data += "rows left result: " + std::to_string(params_.idTableLeft_->numRows()) + "\n";
   data += "rows right result: " + std::to_string(params_.idTableRight_->numRows()) + "\n";
@@ -713,7 +713,7 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
   std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationBuildSmallerRtree.txt", std::ios_base::app);
   fileStream << evalData << std::endl;
   fileStream.close();
-  std::cerr << "should have written the file with content" << std::endl;
+  std::cerr << "added the following content to the file:" << std::endl;
   std::cerr << evalData << std::endl;
   return resTable;
 }
