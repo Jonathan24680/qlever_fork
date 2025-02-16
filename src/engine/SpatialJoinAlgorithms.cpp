@@ -595,27 +595,26 @@ std::vector<Box> SpatialJoinAlgorithms::getQueryBox(
   }
 }
 
-void addTimeStamp(string& data, string name) {
-  data += name;
-  data += " ";
+void SpatialJoinAlgorithms::addTimeStamp(string name) {
+  evalData += name;
+  evalData += ":";
   auto now = std::chrono::system_clock::now();
-  data += std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count());
-  data += "\n";
+  evalData += std::to_string(std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count());
+  evalData += "\n";
 }
 
-void SpatialJoinAlgorithms::addInformation(string& data, string algorithm) {
-  data += "\n\ntime in ms\n";
-  data += "maxDist: " + std::to_string(params_.maxDist_.value()) + "\n";
-  data += "rows left result: " + std::to_string(params_.idTableLeft_->numRows()) + "\n";
-  data += "rows right result: " + std::to_string(params_.idTableRight_->numRows()) + "\n";
-  data += "algorithm: " + algorithm + "\n";
+void SpatialJoinAlgorithms::addInformation(string algorithm) {
+  evalData += "\n\ntime in ms\n";
+  evalData += "maxDist: " + std::to_string(params_.maxDist_.value()) + "\n";
+  evalData += "rows left result: " + std::to_string(params_.idTableLeft_->numRows()) + "\n";
+  evalData += "rows right result: " + std::to_string(params_.idTableRight_->numRows()) + "\n";
+  evalData += "algorithm: " + algorithm + "\n";
 }
 
 // ____________________________________________________________________________
 Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
-  std::string evalData = "";
-  addInformation(evalData, "BoundingBox");
-  addTimeStamp(evalData, "start of BoundingBoxAlgorithm");
+  addInformation("BoundingBox");
+  addTimeStamp("start of BoundingBoxAlgorithm");
   // helper struct to avoid duplicate entries for areas
   struct AddedPair {
     size_t rowLeft_;
@@ -650,6 +649,7 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
     std::swap(smallerResJoinCol, otherResJoinCol);
   }
 
+  addTimeStamp("start_build_rtree");
   // build rtree with one child
   bgi::rtree<Value, bgi::quadratic<16>, bgi::indexable<Value>,
              bgi::equal_to<Value>, ad_utility::AllocatorWithLimit<Value>>
@@ -668,10 +668,13 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
     rtree.insert(std::pair(entry.value().boundingBox_.value(),
                            std::move(entry.value())));
   }
+  addTimeStamp("stop_build_rtree");
 
+  
   // query rtree with the other child
   std::vector<Value, ad_utility::AllocatorWithLimit<Value>> results{
       qec_->getAllocator()};
+  addTimeStamp("start_query_rtree");
   for (size_t i = 0; i < otherResult->numRows(); i++) {
     std::optional<RtreeEntry> entry =
         getRtreeEntry(otherResult, i, otherResJoinCol);
@@ -712,10 +715,11 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
       }
     });
   }
+  addTimeStamp("stop_query_rtree");
   auto resTable =
       Result(std::move(result), std::vector<ColumnIndex>{},
              Result::getMergedLocalVocab(*resultLeft, *resultRight));
-  addTimeStamp(evalData, "end of boundingBox algorithm");
+  addTimeStamp("end of boundingBox algorithm");
   std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationBuildLargerRtree.txt", std::ios_base::app);
   fileStream << evalData << std::endl;
   fileStream.close();
