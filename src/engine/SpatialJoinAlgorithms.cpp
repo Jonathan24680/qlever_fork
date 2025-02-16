@@ -215,6 +215,11 @@ Result SpatialJoinAlgorithms::BaselineAlgorithm() {
       clock_t duration = clock() - startTime;
       if ((float)duration/CLOCKS_PER_SEC > 4) {
         addTimeStamp("TIMEOUT");
+        std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationBaselineAlg.txt", std::ios_base::app);
+        fileStream << evalData << std::endl;
+        fileStream.close();
+        std::cerr << "added the following content to the file:" << std::endl;
+        std::cerr << evalData << std::endl;
         AD_FAIL();
       }
       auto entryRight = getRtreeEntry(idTableRight, rowRight, rightJoinCol);
