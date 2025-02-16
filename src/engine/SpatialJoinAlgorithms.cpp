@@ -605,10 +605,10 @@ void addTimeStamp(string& data, string name) {
 
 void SpatialJoinAlgorithms::addInformation(string& data, string algorithm) {
   data += "time in ms\n";
-  data += "maxDist: " + params_.maxDist_.value();
-  data += "rows left result: " + params_.idTableLeft_->numRows();
-  data += "rows right result: " + params_.idTableRight_->numRows();
-  data += "algorithm: " + algorithm;
+  data += "maxDist: " + std::to_string(params_.maxDist_.value()) + "\n";
+  data += "rows left result: " + std::to_string(params_.idTableLeft_->numRows()) + "\n";
+  data += "rows right result: " + std::to_string(params_.idTableRight_->numRows()) + "\n";
+  data += "algorithm: " + algorithm + "\n";
 }
 
 // ____________________________________________________________________________
