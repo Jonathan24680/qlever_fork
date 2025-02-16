@@ -139,9 +139,12 @@ class SpatialJoinAlgorithms {
     return getRtreeEntry(idTable, row, col);
   }
 
-  void addInformation(string& data, string algorithm);
+  void addInformation(string algorithm);
+
+  void addTimeStamp(string name);
 
  private:
+  std::string evalData = "";
   // Helper function which returns a GeoPoint if the element of the given table
   // represents a GeoPoint
   std::optional<GeoPoint> getPoint(const IdTable* restable, size_t row,
