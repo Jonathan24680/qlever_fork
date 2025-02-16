@@ -15,6 +15,7 @@
 #include <set>
 #include <fstream>
 #include <ctime>
+#include <chrono>
 
 #include "engine/ExportQueryExecutionTrees.h"
 #include "engine/SpatialJoin.h"
@@ -594,22 +595,26 @@ std::vector<Box> SpatialJoinAlgorithms::getQueryBox(
   }
 }
 
-void addTimeStamp(string& data, string_view name) {
+void addTimeStamp(string& data, string name) {
   data += name;
   data += " ";
-  std::time_t time = std::time(nullptr);
-  data += std::to_string(time);
+  auto now = std::chrono::system_clock::now();
+  data += std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count());
   data += "\n";
 }
 
-void addInformation(string& data) {
-  data += "information\n";
+void SpatialJoinAlgorithms::addInformation(string& data, string algorithm) {
+  data += "time in ms\n";
+  data += "maxDist: " + params_.maxDist_.value();
+  data += "rows left result: " + params_.idTableLeft_->numRows();
+  data += "rows right result: " + params_.idTableRight_->numRows();
+  data += "algorithm: " + algorithm;
 }
 
 // ____________________________________________________________________________
 Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
   std::string evalData = "";
-  addInformation(evalData);
+  addInformation(evalData, "BoundingBox");
   addTimeStamp(evalData, "start of BoundingBoxAlgorithm");
   // helper struct to avoid duplicate entries for areas
   struct AddedPair {

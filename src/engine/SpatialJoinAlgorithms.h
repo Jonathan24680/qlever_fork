@@ -139,6 +139,8 @@ class SpatialJoinAlgorithms {
     return getRtreeEntry(idTable, row, col);
   }
 
+  void addInformation(string& data, string algorithm);
+
  private:
   // Helper function which returns a GeoPoint if the element of the given table
   // represents a GeoPoint
