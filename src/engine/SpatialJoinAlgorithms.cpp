@@ -697,18 +697,12 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
   IdTable result{numColumns, qec_->getAllocator()};
 
   // create r-tree for smaller result table
-  // ==========================================================================
-  // this branch is only for the evaluation how much time it takes, to build
-  // the larger rtree. Therefore i just changed the comparison operator,
-  // instead of properly changing it. Now smallerResult is in fact the larger
-  // result
-  //===========================================================================
   auto smallerResult = idTableLeft;
   auto otherResult = idTableRight;
   bool leftResSmaller = true;
   auto smallerResJoinCol = leftJoinCol;
   auto otherResJoinCol = rightJoinCol;
-  if (idTableLeft->numRows() < idTableRight->numRows()) {
+  if (idTableLeft->numRows() > idTableRight->numRows()) {
     std::swap(smallerResult, otherResult);
     leftResSmaller = false;
     std::swap(smallerResJoinCol, otherResJoinCol);
@@ -784,7 +778,7 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
   std::chrono::duration<double, std::micro> duration = endBoundingBoxAlgorithm - startBoundingBoxAlgorithm;
   timeInBoundingBoxAlgorithm += static_cast<long>(duration.count());
   addStatistics();
-  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationTimingAnalysis.txt", std::ios_base::app);
+  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationTimingAnalysisBuildSmallerRtree.txt", std::ios_base::app);
   fileStream << evalData << std::endl;
   fileStream.close();
   std::cerr << "added the following content to the file:" << std::endl;
