@@ -670,8 +670,8 @@ void SpatialJoinAlgorithms::addInformation(string algorithm) {
 
 void SpatialJoinAlgorithms::addStatistics() {
   auto addFunction = [&](std::string functionName, long nrCalls, long timeIn) {
-    evalData += "nrCalls: " + functionName + std::to_string(nrCalls) + "\n";
-    evalData += "timeIn: " + functionName + std::to_string(timeIn) + "\n";
+    evalData += "nrCalls" + functionName + ": " + std::to_string(nrCalls) + "\n";
+    evalData += "timeIn" + functionName + ": " + std::to_string(timeIn) + "\n";
   };
   addFunction("BoundingBoxAlgorithm", nrCallsBoundingBoxAlgorithm, timeInBoundingBoxAlgorithm);
   addFunction("computeQueryBox", nrCallscomputeQueryBox, timeIncomputeQueryBox);
