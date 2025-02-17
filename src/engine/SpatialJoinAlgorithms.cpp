@@ -784,7 +784,7 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
   std::chrono::duration<double, std::micro> duration = endBoundingBoxAlgorithm - startBoundingBoxAlgorithm;
   timeInBoundingBoxAlgorithm += static_cast<long>(duration.count());
   addStatistics();
-  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationPercentAnalysis.txt", std::ios_base::app);
+  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationTimingAnalysis.txt", std::ios_base::app);
   fileStream << evalData << std::endl;
   fileStream.close();
   std::cerr << "added the following content to the file:" << std::endl;
