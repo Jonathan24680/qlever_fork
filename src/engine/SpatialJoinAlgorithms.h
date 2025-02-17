@@ -141,9 +141,13 @@ class SpatialJoinAlgorithms {
 
   void addInformation(string algorithm);
 
-  void addTimeStamp(string name);
+  void addStatistics();
 
  private:
+  unsigned long timeInBoundingBoxAlgorithm = 0;
+  unsigned long nrCallsBoundingBoxAlgorithm = 0;
+  unsigned long timeIncomputeQueryBox = 0;
+  unsigned long nrCallscomputeQueryBox = 0;
   std::string evalData = "";
   // Helper function which returns a GeoPoint if the element of the given table
   // represents a GeoPoint
