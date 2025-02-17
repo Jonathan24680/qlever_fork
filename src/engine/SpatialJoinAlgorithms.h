@@ -35,7 +35,7 @@ using Segment = boost::geometry::model::segment<Point>;
 // this struct is used to get the bounding box of an arbitrary geometry type.
 struct BoundingBoxVisitor : public boost::static_visitor<Box> {
   template <typename Geometry>
-  Box operator()(const Geometry& geometry)  {
+  Box operator()(const Geometry& geometry) const {
     Box box;
     boost::geometry::envelope(geometry, box);
     return box;
@@ -50,7 +50,7 @@ struct BoundingBoxVisitor : public boost::static_visitor<Box> {
 // other points might be closer.
 struct ClosestPointVisitor : public boost::static_visitor<double> {
   template <typename Geometry1, typename Geometry2>
-  double operator()(const Geometry1& geo1, const Geometry2& geo2)  {
+  double operator()(const Geometry1& geo1, const Geometry2& geo2) const {
     Segment seg;
     bg::closest_points(geo1, geo2, seg);
     GeoPoint closestPoint1(bg::get<0, 1>(seg), bg::get<0, 0>(seg));
