@@ -336,6 +336,9 @@ Result SpatialJoinAlgorithms::S2geometryAlgorithm() {
 // ____________________________________________________________________________
 std::vector<Box> SpatialJoinAlgorithms::computeQueryBox(
     const Point& startPoint, double additionalDist) const {
+  nrCallscomputeQueryBox += 1;
+  std::cerr << "added one ==================================== =======" << std::endl;
+  auto startTime = std::chrono::high_resolution_clock::now();
   const auto [idTableLeft, resultLeft, idTableRight, resultRight, leftJoinCol,
               rightJoinCol, rightSelectedCols, numColumns, maxDist,
               maxResults] = params_;
@@ -412,6 +415,9 @@ std::vector<Box> SpatialJoinAlgorithms::computeQueryBox(
                     Point(rightLonBound - 360, upperLatBound));
     return {box1, box2};
   }
+  auto endTime =std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> duration = startTime - endTime;
+  timeIncomputeQueryBox += static_cast<long>(duration.count());
   // default case, when no bound has an "overflow"
   return {Box(Point(leftLonBound, lowerLatBound),
               Point(rightLonBound, upperLatBound))};
@@ -595,14 +601,6 @@ std::vector<Box> SpatialJoinAlgorithms::getQueryBox(
   }
 }
 
-void SpatialJoinAlgorithms::addTimeStamp(string name) {
-  evalData += name;
-  evalData += ":";
-  auto now = std::chrono::system_clock::now();
-  evalData += std::to_string(std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count());
-  evalData += "\n";
-}
-
 void SpatialJoinAlgorithms::addInformation(string algorithm) {
   evalData += "\n\ntime in ms\n";
   evalData += "maxDist: " + std::to_string(params_.maxDist_.value()) + "\n";
@@ -611,10 +609,20 @@ void SpatialJoinAlgorithms::addInformation(string algorithm) {
   evalData += "algorithm: " + algorithm + "\n";
 }
 
+void SpatialJoinAlgorithms::addStatistics() {
+  auto addFunction = [&](std::string functionName, long nrCalls, long timeIn) {
+    evalData += "nrCalls" + functionName + std::to_string(nrCalls) + "\n";
+    evalData += "timeIn" + functionName + std::to_string(timeIn) + "\n";
+  };
+  addFunction("BoundingBoxAlgorithm", nrCallsBoundingBoxAlgorithm, timeInBoundingBoxAlgorithm);
+  addFunction("computeQueryBox", nrCallscomputeQueryBox, timeIncomputeQueryBox);
+}
+
 // ____________________________________________________________________________
 Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
+  auto startBoundingBoxAlgorithm = std::chrono::high_resolution_clock::now();
+  nrCallsBoundingBoxAlgorithm += 1;
   addInformation("BoundingBox");
-  addTimeStamp("start of BoundingBoxAlgorithm");
   // helper struct to avoid duplicate entries for areas
   struct AddedPair {
     size_t rowLeft_;
@@ -649,7 +657,6 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
     std::swap(smallerResJoinCol, otherResJoinCol);
   }
 
-  addTimeStamp("start_build_rtree");
   // build rtree with one child
   bgi::rtree<Value, bgi::quadratic<16>, bgi::indexable<Value>,
              bgi::equal_to<Value>, ad_utility::AllocatorWithLimit<Value>>
@@ -668,13 +675,11 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
     rtree.insert(std::pair(entry.value().boundingBox_.value(),
                            std::move(entry.value())));
   }
-  addTimeStamp("stop_build_rtree");
 
   
   // query rtree with the other child
   std::vector<Value, ad_utility::AllocatorWithLimit<Value>> results{
       qec_->getAllocator()};
-  addTimeStamp("start_query_rtree");
   for (size_t i = 0; i < otherResult->numRows(); i++) {
     std::optional<RtreeEntry> entry =
         getRtreeEntry(otherResult, i, otherResJoinCol);
@@ -715,12 +720,14 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
       }
     });
   }
-  addTimeStamp("stop_query_rtree");
   auto resTable =
       Result(std::move(result), std::vector<ColumnIndex>{},
              Result::getMergedLocalVocab(*resultLeft, *resultRight));
-  addTimeStamp("end of boundingBox algorithm");
-  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationBuildLargerRtree.txt", std::ios_base::app);
+  auto endBoundingBoxAlgorithm = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> duration = endBoundingBoxAlgorithm - startBoundingBoxAlgorithm;
+  timeInBoundingBoxAlgorithm += static_cast<long>(duration.count());
+  addStatistics();
+  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationPercentAnalysis.txt", std::ios_base::app);
   fileStream << evalData << std::endl;
   fileStream.close();
   std::cerr << "added the following content to the file:" << std::endl;
