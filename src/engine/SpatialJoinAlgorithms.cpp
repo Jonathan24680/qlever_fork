@@ -56,6 +56,8 @@ std::string_view SpatialJoinAlgorithms::betweenQuotes(
 
 std::optional<size_t> SpatialJoinAlgorithms::getAnyGeometry(
     const IdTable* idtable, size_t row, size_t col) {
+  nrCallsgetAnyGeometry += 1;
+  auto startTime = std::chrono::high_resolution_clock::now();
   auto printWarning = [this, &spatialJoin = spatialJoin_]() {
     if (this->numFailedParsedGeometries_ == 0) {
       std::string warning =
@@ -88,8 +90,14 @@ std::optional<size_t> SpatialJoinAlgorithms::getAnyGeometry(
     geometries_.push_back(std::move(geometry));
   } catch (...) {
     printWarning();
+    auto endTime = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = endTime - startTime;
+    timeIngetAnyGeometry += static_cast<long>(duration.count());
     return std::nullopt;
   }
+  auto endTime = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> duration = endTime - startTime;
+  timeIngetAnyGeometry += static_cast<long>(duration.count());
   return geometries_.size() - 1;  // index of the last element
 }
 
@@ -673,6 +681,7 @@ void SpatialJoinAlgorithms::addStatistics() {
   addFunction("addResultTableEntry", nrCallsaddResultTableEntry, timeInaddResultTableEntry);
   addFunction("computeQueryBoxForLargeDistances", nrCallscomputeQueryBoxForLargeDistances, timeIncomputeQueryBoxForLargeDistances);
   addFunction("computeDistArea", nrCallscomputeDistArea, timeIncomputeDistArea);
+  addFunction("getAnyGeometry", nrCallsgetAnyGeometry, timeIngetAnyGeometry);
 }
 
 // ____________________________________________________________________________

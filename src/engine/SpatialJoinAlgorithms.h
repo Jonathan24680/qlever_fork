@@ -160,6 +160,8 @@ class SpatialJoinAlgorithms {
   unsigned long nrCallscomputeQueryBoxForLargeDistances = 0;
   unsigned long timeIncomputeDistArea = 0;
   unsigned long nrCallscomputeDistArea = 0;
+  unsigned long timeIngetAnyGeometry = 0;
+  unsigned long nrCallsgetAnyGeometry = 0;
 
   std::string evalData = "";
   // Helper function which returns a GeoPoint if the element of the given table
@@ -224,7 +226,7 @@ class SpatialJoinAlgorithms {
 
   // if the distance calculation should be approximated, by the midpoint of
   // the area
-  bool useMidpointForAreas_ = true;
+  bool useMidpointForAreas_ = false;
 
   // circumference in meters at the equator (max) and the pole (min) (as the
   // earth is not exactly a sphere the circumference is different. Note that
