@@ -96,9 +96,15 @@ std::optional<size_t> SpatialJoinAlgorithms::getAnyGeometry(
 // ____________________________________________________________________________
 double SpatialJoinAlgorithms::computeDist(const size_t geometryIndex1,
                                           const size_t geometryIndex2)  {
-  return boost::apply_visitor(ClosestPointVisitor(),
+  nrCallscomputeDistArea += 1;
+  auto startTime = std::chrono::high_resolution_clock::now();
+  auto a = boost::apply_visitor(ClosestPointVisitor(),
                               geometries_.at(geometryIndex1),
                               geometries_.at(geometryIndex2));
+  auto endTime = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> duration = endTime - startTime;
+  timeIncomputeDistArea += static_cast<long>(duration.count());
+  return a;
 };
 
 // ____________________________________________________________________________
@@ -109,6 +115,9 @@ size_t SpatialJoinAlgorithms::convertGeoPointToPoint(GeoPoint point) {
 
 // ____________________________________________________________________________
 Id SpatialJoinAlgorithms::computeDist(RtreeEntry& geo1, RtreeEntry& geo2) {
+  nrCallscomputeDist += 1;
+  auto startTime = std::chrono::high_resolution_clock::now();
+  
   auto convertPoint = [&](RtreeEntry& entry) {
     if (entry.geoPoint_) {
       return entry.geoPoint_.value();
@@ -131,10 +140,16 @@ Id SpatialJoinAlgorithms::computeDist(RtreeEntry& geo1, RtreeEntry& geo2) {
   // use the already parsed geometries to calculate the distance
   if (useMidpointForAreas_ ||
       (geo1.geoPoint_.has_value() && geo2.geoPoint_.has_value())) {
+    auto endTime = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = endTime - startTime;
+    timeIncomputeDist += static_cast<long>(duration.count());
     return Id::makeFromDouble(ad_utility::detail::wktDistImpl(
         convertPoint(geo1), convertPoint(geo2)));
   } else {
     // at least one area
+    auto endTime = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = endTime - startTime;
+    timeIncomputeDist += static_cast<long>(duration.count());
     return Id::makeFromDouble(computeDist(getIndex(geo1), getIndex(geo2)));
   }
 }
@@ -150,6 +165,8 @@ void SpatialJoinAlgorithms::addResultTableEntry(IdTable* result,
   // nullopt, all columns are added. It copies them into the row rowIndRes and
   // column column colIndRes. It returns the column number until which elements
   // were copied
+  nrCallsaddResultTableEntry += 1;
+  auto startTime = std::chrono::high_resolution_clock::now();
   auto addColumns = [](IdTable* res, const IdTable* copyFrom, size_t rowIndRes,
                        size_t colIndRes, size_t rowIndCopy,
                        std::optional<std::vector<ColumnIndex>> sourceColumns =
@@ -180,6 +197,9 @@ void SpatialJoinAlgorithms::addResultTableEntry(IdTable* result,
     // not work and so on
     // rescol += 1;
   }
+  auto endTime = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> duration = endTime - startTime;
+  timeInaddResultTableEntry += static_cast<long>(duration.count());
 }
 
 // ____________________________________________________________________________
@@ -337,7 +357,6 @@ Result SpatialJoinAlgorithms::S2geometryAlgorithm() {
 std::vector<Box> SpatialJoinAlgorithms::computeQueryBox(
     const Point& startPoint, double additionalDist)  {
   nrCallscomputeQueryBox += 1;
-  std::cerr << "added one ==================================== =======" << std::endl;
   auto startTime = std::chrono::high_resolution_clock::now();
   const auto [idTableLeft, resultLeft, idTableRight, resultRight, leftJoinCol,
               rightJoinCol, rightSelectedCols, numColumns, maxDist,
@@ -368,6 +387,9 @@ std::vector<Box> SpatialJoinAlgorithms::computeQueryBox(
   // a single bounding box for the whole planet, do an optimized version
   if (static_cast<double>(maxDist.value()) > circumferenceMax_ / 4.0 &&
       static_cast<double>(maxDist.value()) < circumferenceMax_ / 2.01) {
+    auto endTime = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = endTime - startTime;
+    timeIncomputeQueryBox += static_cast<long>(duration.count());
     return computeQueryBoxForLargeDistances(startPoint);
   }
 
@@ -380,6 +402,9 @@ std::vector<Box> SpatialJoinAlgorithms::computeQueryBox(
   auto northPoleReached = isAPoleTouched(upperLatBound).at(0);
 
   if (southPoleReached || northPoleReached) {
+    auto endTime = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = endTime - startTime;
+    timeIncomputeQueryBox += static_cast<long>(duration.count());
     return {Box(Point(-180.0f, lowerLatBound), Point(180.0f, upperLatBound))};
   }
 
@@ -407,16 +432,22 @@ std::vector<Box> SpatialJoinAlgorithms::computeQueryBox(
         Box(Point(-180, lowerLatBound), Point(rightLonBound, upperLatBound));
     auto box2 = Box(Point(leftLonBound + 360, lowerLatBound),
                     Point(180, upperLatBound));
+    auto endTime = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = endTime - startTime;
+    timeIncomputeQueryBox += static_cast<long>(duration.count());
     return {box1, box2};
   } else if (rightLonBound > 180) {
     auto box1 =
         Box(Point(leftLonBound, lowerLatBound), Point(180, upperLatBound));
     auto box2 = Box(Point(-180, lowerLatBound),
                     Point(rightLonBound - 360, upperLatBound));
+    auto endTime = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::micro> duration = endTime - startTime;
+    timeIncomputeQueryBox += static_cast<long>(duration.count());
     return {box1, box2};
   }
-  auto endTime =std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double, std::micro> duration = startTime - endTime;
+  auto endTime = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> duration = endTime - startTime;
   timeIncomputeQueryBox += static_cast<long>(duration.count());
   // default case, when no bound has an "overflow"
   return {Box(Point(leftLonBound, lowerLatBound),
@@ -426,6 +457,8 @@ std::vector<Box> SpatialJoinAlgorithms::computeQueryBox(
 // ____________________________________________________________________________
 std::vector<Box> SpatialJoinAlgorithms::computeQueryBoxForLargeDistances(
     const Point& startPoint)  {
+  nrCallscomputeQueryBoxForLargeDistances += 1;
+  auto startTime = std::chrono::high_resolution_clock::now();
   const auto [idTableLeft, resultLeft, idTableRight, resultRight, leftJoinCol,
               rightJoinCol, rightSelectedCols, numColumns, maxDist,
               maxResults] = params_;
@@ -500,17 +533,26 @@ std::vector<Box> SpatialJoinAlgorithms::computeQueryBoxForLargeDistances(
     boxes.emplace_back(Point(-180, -90), Point(leftBound, 90));
     boxes.emplace_back(Point(rightBound, -90), Point(180, 90));
   }
+  auto endTime = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> duration = endTime - startTime;
+  timeIncomputeQueryBoxForLargeDistances += static_cast<long>(duration.count());
   return boxes;
 }
 
 // ____________________________________________________________________________
 bool SpatialJoinAlgorithms::isContainedInBoundingBoxes(
     const std::vector<Box>& boundingBox, Point point)  {
+  nrCallsisContainedInBoundingBoxes += 1;
+  auto startTime = std::chrono::high_resolution_clock::now();
   convertToNormalCoordinates(point);
 
-  return ql::ranges::any_of(boundingBox, [point](const Box& aBox) {
+  auto a = ql::ranges::any_of(boundingBox, [point](const Box& aBox) {
     return boost::geometry::covered_by(point, aBox);
   });
+  auto endTime = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> duration = endTime - startTime;
+  timeInisContainedInBoundingBoxes += static_cast<long>(duration.count());
+  return a;
 }
 
 // ____________________________________________________________________________
@@ -545,6 +587,7 @@ std::array<bool, 2> SpatialJoinAlgorithms::isAPoleTouched(
 
 // ____________________________________________________________________________
 Point SpatialJoinAlgorithms::calculateMidpointOfBox(const Box& box)  {
+  auto startTime = std::chrono::high_resolution_clock::now();
   double lng = (box.min_corner().get<0>() + box.max_corner().get<0>()) / 2.0;
   double lat = (box.min_corner().get<1>() + box.max_corner().get<1>()) / 2.0;
   return Point(lng, lat);
@@ -567,12 +610,17 @@ double SpatialJoinAlgorithms::getMaxDistFromMidpointToAnyPointInsideTheBox(
 // ____________________________________________________________________________
 std::optional<RtreeEntry> SpatialJoinAlgorithms::getRtreeEntry(
     const IdTable* idTable, const size_t row, const ColumnIndex col) {
+  nrCallsgetRtreeEntry += 1;
+  auto startTime = std::chrono::high_resolution_clock::now();
   RtreeEntry entry{row, std::nullopt, std::nullopt, std::nullopt};
   entry.geoPoint_ = getPoint(idTable, row, col);
 
   if (!entry.geoPoint_) {
     entry.geometryIndex_ = getAnyGeometry(idTable, row, col);
     if (!entry.geometryIndex_) {
+      auto endTime = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double, std::micro> duration = endTime - startTime;
+      timeIngetRtreeEntry += static_cast<long>(duration.count());
       return std::nullopt;
     }
     entry.boundingBox_ = boost::apply_visitor(
@@ -584,6 +632,9 @@ std::optional<RtreeEntry> SpatialJoinAlgorithms::getRtreeEntry(
             Point(entry.geoPoint_.value().getLng() + 0.00000001,
                   entry.geoPoint_.value().getLat() + 0.00000001));
   }
+  auto endTime = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> duration = endTime - startTime;
+  timeIngetRtreeEntry += static_cast<long>(duration.count());
   return entry;
 }
 
@@ -602,7 +653,7 @@ std::vector<Box> SpatialJoinAlgorithms::getQueryBox(
 }
 
 void SpatialJoinAlgorithms::addInformation(string algorithm) {
-  evalData += "\n\ntime in ms\n";
+  evalData += "\n\ntime in microseconds\n";
   evalData += "maxDist: " + std::to_string(params_.maxDist_.value()) + "\n";
   evalData += "rows left result: " + std::to_string(params_.idTableLeft_->numRows()) + "\n";
   evalData += "rows right result: " + std::to_string(params_.idTableRight_->numRows()) + "\n";
@@ -616,6 +667,12 @@ void SpatialJoinAlgorithms::addStatistics() {
   };
   addFunction("BoundingBoxAlgorithm", nrCallsBoundingBoxAlgorithm, timeInBoundingBoxAlgorithm);
   addFunction("computeQueryBox", nrCallscomputeQueryBox, timeIncomputeQueryBox);
+  addFunction("isContainedInBoundingBoxes", nrCallsisContainedInBoundingBoxes, timeInisContainedInBoundingBoxes);
+  addFunction("computeDist", nrCallscomputeDist, timeIncomputeDist);
+  addFunction("getRtreeEntry", nrCallsgetRtreeEntry, timeIngetRtreeEntry);
+  addFunction("addResultTableEntry", nrCallsaddResultTableEntry, timeInaddResultTableEntry);
+  addFunction("computeQueryBoxForLargeDistances", nrCallscomputeQueryBoxForLargeDistances, timeIncomputeQueryBoxForLargeDistances);
+  addFunction("computeDistArea", nrCallscomputeDistArea, timeIncomputeDistArea);
 }
 
 // ____________________________________________________________________________

@@ -148,6 +148,19 @@ class SpatialJoinAlgorithms {
   unsigned long nrCallsBoundingBoxAlgorithm = 0;
   unsigned long timeIncomputeQueryBox = 0;
   unsigned long nrCallscomputeQueryBox = 0;
+  unsigned long timeInisContainedInBoundingBoxes = 0;
+  unsigned long nrCallsisContainedInBoundingBoxes = 0;
+  unsigned long timeIncomputeDist = 0;
+  unsigned long nrCallscomputeDist = 0;
+  unsigned long timeIngetRtreeEntry = 0;
+  unsigned long nrCallsgetRtreeEntry = 0;
+  unsigned long timeInaddResultTableEntry = 0;
+  unsigned long nrCallsaddResultTableEntry = 0;
+  unsigned long timeIncomputeQueryBoxForLargeDistances = 0;
+  unsigned long nrCallscomputeQueryBoxForLargeDistances = 0;
+  unsigned long timeIncomputeDistArea = 0;
+  unsigned long nrCallscomputeDistArea = 0;
+
   std::string evalData = "";
   // Helper function which returns a GeoPoint if the element of the given table
   // represents a GeoPoint
