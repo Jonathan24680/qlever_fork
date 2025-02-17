@@ -35,7 +35,7 @@ using Segment = boost::geometry::model::segment<Point>;
 // this struct is used to get the bounding box of an arbitrary geometry type.
 struct BoundingBoxVisitor : public boost::static_visitor<Box> {
   template <typename Geometry>
-  Box operator()(const Geometry& geometry) const {
+  Box operator()(const Geometry& geometry)  {
     Box box;
     boost::geometry::envelope(geometry, box);
     return box;
@@ -50,7 +50,7 @@ struct BoundingBoxVisitor : public boost::static_visitor<Box> {
 // other points might be closer.
 struct ClosestPointVisitor : public boost::static_visitor<double> {
   template <typename Geometry1, typename Geometry2>
-  double operator()(const Geometry1& geo1, const Geometry2& geo2) const {
+  double operator()(const Geometry1& geo1, const Geometry2& geo2)  {
     Segment seg;
     bg::closest_points(geo1, geo2, seg);
     GeoPoint closestPoint1(bg::get<0, 1>(seg), bg::get<0, 0>(seg));
@@ -102,15 +102,15 @@ class SpatialJoinAlgorithms {
   // The function getMaxDistFromMidpointToAnyPointInsideTheBox() can be used to
   // calculate it.
   std::vector<Box> computeQueryBox(const Point& startPoint,
-                                   double additionalDist = 0) const;
+                                   double additionalDist = 0) ;
 
   // This function returns true, iff the given point is contained in any of the
   // bounding boxes
   bool isContainedInBoundingBoxes(const std::vector<Box>& boundingBox,
-                                  Point point) const;
+                                  Point point) ;
 
   // calculates the midpoint of the given Box
-  Point calculateMidpointOfBox(const Box& box) const;
+  Point calculateMidpointOfBox(const Box& box) ;
 
   void setUseMidpointForAreas_(bool useMidpointForAreas) {
     useMidpointForAreas_ = useMidpointForAreas;
@@ -126,7 +126,7 @@ class SpatialJoinAlgorithms {
   // can be given to the function, otherwise the function calculates the
   // midpoint itself
   double getMaxDistFromMidpointToAnyPointInsideTheBox(
-      const Box& box, std::optional<Point> midpoint = std::nullopt) const;
+      const Box& box, std::optional<Point> midpoint = std::nullopt) ;
 
   // this function gets the string which represents the area from the idtable.
   std::optional<size_t> getAnyGeometry(const IdTable* idtable, size_t row,
@@ -152,18 +152,18 @@ class SpatialJoinAlgorithms {
   // Helper function which returns a GeoPoint if the element of the given table
   // represents a GeoPoint
   std::optional<GeoPoint> getPoint(const IdTable* restable, size_t row,
-                                   ColumnIndex col) const;
+                                   ColumnIndex col) ;
 
   // returns everything between the first two quotes. If the string does not
   // contain two quotes, the string is returned as a whole
-  std::string_view betweenQuotes(std::string_view extractFrom) const;
+  std::string_view betweenQuotes(std::string_view extractFrom) ;
 
   // Helper function, which adds a row, which belongs to the result to the
   // result table. As inputs it uses a row of the left and a row of the right
   // child result table.
   void addResultTableEntry(IdTable* result, const IdTable* resultLeft,
                            const IdTable* resultRight, size_t rowLeft,
-                           size_t rowRight, Id distance) const;
+                           size_t rowRight, Id distance) ;
 
   // This helper function calculates the bounding boxes based on a box, where
   // definitely no match can occur. This means every element in the anti
@@ -174,7 +174,7 @@ class SpatialJoinAlgorithms {
   // bounding box, which covers the whole planet (so for extremely large max
   // distances)
   std::vector<Box> computeQueryBoxForLargeDistances(
-      const Point& startPoint) const;
+      const Point& startPoint) ;
 
   // this helper function approximates a conversion of the distance between two
   // objects from degrees to meters. Here we assume, that the conversion from
@@ -185,7 +185,7 @@ class SpatialJoinAlgorithms {
   // difference). Note, that this function is expensive and should only be
   // called when needed
   double computeDist(const size_t geometryIndex1,
-                     const size_t geometryIndex2) const;
+                     const size_t geometryIndex2) ;
 
   // this helper function takes an idtable, a row and a column. It then tries
   // to parse a geometry or a geoPoint of that cell in the idtable. If it
@@ -202,7 +202,7 @@ class SpatialJoinAlgorithms {
   // query must be contained in. It returns a vector, because if the box crosses
   // the poles or the -180/180 longitude line, then it is disjoint in the
   // cartesian coordinates. The boxes themselves are disjoint to each other.
-  std::vector<Box> getQueryBox(const std::optional<RtreeEntry>& entry) const;
+  std::vector<Box> getQueryBox(const std::optional<RtreeEntry>& entry) ;
 
   QueryExecutionContext* qec_;
   PreparedSpatialJoinParams params_;
@@ -224,10 +224,10 @@ class SpatialJoinAlgorithms {
   static constexpr double radius_ = 6'378'000;
 
   // convert coordinates to the usual ranges (-180 to 180 and -90 to 90)
-  void convertToNormalCoordinates(Point& point) const;
+  void convertToNormalCoordinates(Point& point) ;
 
   // return whether one of the poles is being touched
-  std::array<bool, 2> isAPoleTouched(const double& latitude) const;
+  std::array<bool, 2> isAPoleTouched(const double& latitude) ;
 
   // number of times the parsing of a geometry failed. For now this is only used
   // to print the warning once, but it could also be used to print how many

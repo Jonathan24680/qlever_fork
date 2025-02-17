@@ -35,7 +35,7 @@ SpatialJoinAlgorithms::SpatialJoinAlgorithms(
 // ____________________________________________________________________________
 std::optional<GeoPoint> SpatialJoinAlgorithms::getPoint(const IdTable* restable,
                                                         size_t row,
-                                                        ColumnIndex col) const {
+                                                        ColumnIndex col) {
   auto id = restable->at(row, col);
   return id.getDatatype() == Datatype::GeoPoint
              ? std::optional{id.getGeoPoint()}
@@ -44,7 +44,7 @@ std::optional<GeoPoint> SpatialJoinAlgorithms::getPoint(const IdTable* restable,
 
 // ____________________________________________________________________________
 std::string_view SpatialJoinAlgorithms::betweenQuotes(
-    std::string_view extractFrom) const {
+    std::string_view extractFrom) {
   size_t pos1 = extractFrom.find("\"", 0);
   size_t pos2 = extractFrom.find("\"", pos1 + 1);
   if (pos1 != std::string::npos && pos2 != std::string::npos) {
@@ -95,7 +95,7 @@ std::optional<size_t> SpatialJoinAlgorithms::getAnyGeometry(
 
 // ____________________________________________________________________________
 double SpatialJoinAlgorithms::computeDist(const size_t geometryIndex1,
-                                          const size_t geometryIndex2) const {
+                                          const size_t geometryIndex2)  {
   return boost::apply_visitor(ClosestPointVisitor(),
                               geometries_.at(geometryIndex1),
                               geometries_.at(geometryIndex2));
@@ -144,7 +144,7 @@ void SpatialJoinAlgorithms::addResultTableEntry(IdTable* result,
                                                 const IdTable* idTableLeft,
                                                 const IdTable* idTableRight,
                                                 size_t rowLeft, size_t rowRight,
-                                                Id distance) const {
+                                                Id distance)  {
   // this lambda function copies values from copyFrom into the table res only if
   // the column of the value is specified in sourceColumns. If sourceColumns is
   // nullopt, all columns are added. It copies them into the row rowIndRes and
@@ -335,7 +335,7 @@ Result SpatialJoinAlgorithms::S2geometryAlgorithm() {
 
 // ____________________________________________________________________________
 std::vector<Box> SpatialJoinAlgorithms::computeQueryBox(
-    const Point& startPoint, double additionalDist) const {
+    const Point& startPoint, double additionalDist)  {
   nrCallscomputeQueryBox += 1;
   std::cerr << "added one ==================================== =======" << std::endl;
   auto startTime = std::chrono::high_resolution_clock::now();
@@ -425,7 +425,7 @@ std::vector<Box> SpatialJoinAlgorithms::computeQueryBox(
 
 // ____________________________________________________________________________
 std::vector<Box> SpatialJoinAlgorithms::computeQueryBoxForLargeDistances(
-    const Point& startPoint) const {
+    const Point& startPoint)  {
   const auto [idTableLeft, resultLeft, idTableRight, resultRight, leftJoinCol,
               rightJoinCol, rightSelectedCols, numColumns, maxDist,
               maxResults] = params_;
@@ -505,7 +505,7 @@ std::vector<Box> SpatialJoinAlgorithms::computeQueryBoxForLargeDistances(
 
 // ____________________________________________________________________________
 bool SpatialJoinAlgorithms::isContainedInBoundingBoxes(
-    const std::vector<Box>& boundingBox, Point point) const {
+    const std::vector<Box>& boundingBox, Point point)  {
   convertToNormalCoordinates(point);
 
   return ql::ranges::any_of(boundingBox, [point](const Box& aBox) {
@@ -514,7 +514,7 @@ bool SpatialJoinAlgorithms::isContainedInBoundingBoxes(
 }
 
 // ____________________________________________________________________________
-void SpatialJoinAlgorithms::convertToNormalCoordinates(Point& point) const {
+void SpatialJoinAlgorithms::convertToNormalCoordinates(Point& point)  {
   // correct lon and lat bounds if necessary
   while (point.get<0>() < -180) {
     point.set<0>(point.get<0>() + 360);
@@ -531,7 +531,7 @@ void SpatialJoinAlgorithms::convertToNormalCoordinates(Point& point) const {
 
 // ____________________________________________________________________________
 std::array<bool, 2> SpatialJoinAlgorithms::isAPoleTouched(
-    const double& latitude) const {
+    const double& latitude)  {
   bool northPoleReached = false;
   bool southPoleReached = false;
   if (latitude >= 90) {
@@ -544,7 +544,7 @@ std::array<bool, 2> SpatialJoinAlgorithms::isAPoleTouched(
 }
 
 // ____________________________________________________________________________
-Point SpatialJoinAlgorithms::calculateMidpointOfBox(const Box& box) const {
+Point SpatialJoinAlgorithms::calculateMidpointOfBox(const Box& box)  {
   double lng = (box.min_corner().get<0>() + box.max_corner().get<0>()) / 2.0;
   double lat = (box.min_corner().get<1>() + box.max_corner().get<1>()) / 2.0;
   return Point(lng, lat);
@@ -552,7 +552,7 @@ Point SpatialJoinAlgorithms::calculateMidpointOfBox(const Box& box) const {
 
 // ____________________________________________________________________________
 double SpatialJoinAlgorithms::getMaxDistFromMidpointToAnyPointInsideTheBox(
-    const Box& box, std::optional<Point> midpoint) const {
+    const Box& box, std::optional<Point> midpoint)  {
   if (!midpoint) {
     midpoint = calculateMidpointOfBox(box);
   }
@@ -589,7 +589,7 @@ std::optional<RtreeEntry> SpatialJoinAlgorithms::getRtreeEntry(
 
 // ____________________________________________________________________________
 std::vector<Box> SpatialJoinAlgorithms::getQueryBox(
-    const std::optional<RtreeEntry>& entry) const {
+    const std::optional<RtreeEntry>& entry)  {
   if (!entry.value().geoPoint_) {
     auto midpoint = calculateMidpointOfBox(entry.value().boundingBox_.value());
     return computeQueryBox(midpoint,
