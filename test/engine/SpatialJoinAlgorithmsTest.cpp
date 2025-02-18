@@ -1769,6 +1769,41 @@ string createTestKnowledgeGraph(bool verbose) {
     *kg += " <asWKT> \"Polygon(";
     createPolygonCoordinates(kg, lon, lat);
     *kg += ")\"^^<http://www.opengis.net/ont/geosparql#wktLiteral> .\n";
+
+    if ((int)lon % 2 == 0) {
+      *kg += name;
+      *kg += " <lon-is-div-by> <two> .\n";  // divisible by two
+    }
+    if ((int)lon % 3 == 0) {
+      *kg += name;
+      *kg += " <lon-is-div-by> <three> .\n";  // divisible by three
+    }
+    if ((int)lon % 4 == 0) {
+      *kg += name;
+      *kg += " <lon-is-div-by> <four> .\n";  // divisible by four
+    }
+    if ((int)lon % 5 == 0) {
+      *kg += name;
+      *kg += " <lon-is-div-by> <five> .\n";  // divisible by five
+    }
+
+    if ((int)lat % 2 == 0) {
+      *kg += name;
+      *kg += " <lat-is-div-by> <two> .\n";  // divisible by two
+    }
+    if ((int)lat % 3 == 0) {
+      *kg += name;
+      *kg += " <lat-is-div-by> <three> .\n";  // divisible by three
+    }
+    if ((int)lat % 4 == 0) {
+      *kg += name;
+      *kg += " <lat-is-div-by> <four> .\n";  // divisible by four
+    }
+    if ((int)lat % 5 == 0) {
+      *kg += name;
+      *kg += " <lat-is-div-by> <five> .\n";  // divisible by five
+    }
+
   };
 
   string kg = "";  // knowlegde graph
