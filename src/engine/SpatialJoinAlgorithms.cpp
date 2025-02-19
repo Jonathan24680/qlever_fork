@@ -730,7 +730,7 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
       Result(std::move(result), std::vector<ColumnIndex>{},
              Result::getMergedLocalVocab(*resultLeft, *resultRight));
   addTimeStamp("end of boundingBox algorithm");
-  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationBuildLargerRtree.txt", std::ios_base::app);
+  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationPercentAnalysis.txt", std::ios_base::app);
   fileStream << evalData << std::endl;
   fileStream.close();
   std::cerr << "added the following content to the file:" << std::endl;
