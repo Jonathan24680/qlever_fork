@@ -603,6 +603,13 @@ void SpatialJoinAlgorithms::addTimeStamp(string name) {
   evalData += "\n";
 }
 
+void SpatialJoinAlgorithms::addKeyValue(string key, string value) {
+  evalData += key;
+  evalData += ":";
+  evalData += value;
+  evalData += "\n";
+}
+
 void SpatialJoinAlgorithms::addInformation(string algorithm) {
   evalData += "\n\ntime in ms\n";
   evalData += "maxDist: " + std::to_string(params_.maxDist_.value()) + "\n";
@@ -692,6 +699,8 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
       rtree.query(bgi::intersects(bbox), std::back_inserter(results));
     });
 
+    addKeyValue("size_after_query_box", std::to_string(results.size()));
+
     std::set<AddedPair> pairs;
     ql::ranges::for_each(results, [&](Value& res) {
       size_t rowLeft = res.second.row_;
@@ -716,6 +725,7 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
     });
   }
   addTimeStamp("stop_query_rtree");
+  addKeyValue("size_result_table", std::to_string(result.numRows()));
   auto resTable =
       Result(std::move(result), std::vector<ColumnIndex>{},
              Result::getMergedLocalVocab(*resultLeft, *resultRight));

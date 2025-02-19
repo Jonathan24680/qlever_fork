@@ -143,6 +143,8 @@ class SpatialJoinAlgorithms {
 
   void addTimeStamp(string name);
 
+  void addKeyValue(string key, string value);
+
  private:
   std::string evalData = "";
   // Helper function which returns a GeoPoint if the element of the given table
