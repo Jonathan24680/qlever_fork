@@ -624,7 +624,9 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
   auto children = spatialJoin_.value()->getChildren();
   assert(children.size() == 2);
   auto firstChildDescriptor = children.at(0)->getCacheKey();
+  firstChildDescriptor.erase(std::remove(firstChildDescriptor.begin(), firstChildDescriptor.end(), '\n'), firstChildDescriptor.end());
   auto secondChildDescriptor = children.at(1)->getCacheKey();
+  secondChildDescriptor.erase(std::remove(secondChildDescriptor.begin(), secondChildDescriptor.end(), '\n'), secondChildDescriptor.end());
   addKeyValue("firstChildDescriptor", firstChildDescriptor);
   addKeyValue("secondChildDescriptor", secondChildDescriptor);
   addTimeStamp("start of BoundingBoxAlgorithm");
