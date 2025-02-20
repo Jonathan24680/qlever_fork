@@ -143,6 +143,8 @@ class SpatialJoinAlgorithms {
 
   void addStatistics();
 
+  void addKeyValue(string key, string value);
+
  private:
   unsigned long timeInBoundingBoxAlgorithm = 0;
   unsigned long nrCallsBoundingBoxAlgorithm = 0;

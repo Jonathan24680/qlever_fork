@@ -684,10 +684,25 @@ void SpatialJoinAlgorithms::addStatistics() {
   addFunction("getAnyGeometry", nrCallsgetAnyGeometry, timeIngetAnyGeometry);
 }
 
+void SpatialJoinAlgorithms::addKeyValue(string key, string value) {
+  evalData += key;
+  evalData += ":";
+  evalData += value;
+  evalData += "\n";
+}
+
 // ____________________________________________________________________________
 Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
   auto startBoundingBoxAlgorithm = std::chrono::high_resolution_clock::now();
   nrCallsBoundingBoxAlgorithm += 1;
+  auto children = spatialJoin_.value()->getChildren();
+  assert(children.size() == 2);
+  auto firstChildDescriptor = children.at(0)->getCacheKey();
+  firstChildDescriptor.erase(std::remove(firstChildDescriptor.begin(), firstChildDescriptor.end(), '\n'), firstChildDescriptor.end());
+  auto secondChildDescriptor = children.at(1)->getCacheKey();
+  secondChildDescriptor.erase(std::remove(secondChildDescriptor.begin(), secondChildDescriptor.end(), '\n'), secondChildDescriptor.end());
+  addKeyValue("firstChildDescriptor", firstChildDescriptor);
+  addKeyValue("secondChildDescriptor", secondChildDescriptor);
   addInformation("BoundingBox");
   // helper struct to avoid duplicate entries for areas
   struct AddedPair {
