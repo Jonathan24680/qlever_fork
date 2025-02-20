@@ -693,8 +693,7 @@ void SpatialJoinAlgorithms::addKeyValue(string key, string value) {
 
 // ____________________________________________________________________________
 Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
-  auto startBoundingBoxAlgorithm = std::chrono::high_resolution_clock::now();
-  nrCallsBoundingBoxAlgorithm += 1;
+  addInformation("BoundingBox");
   auto children = spatialJoin_.value()->getChildren();
   assert(children.size() == 2);
   auto firstChildDescriptor = children.at(0)->getCacheKey();
@@ -703,7 +702,9 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
   secondChildDescriptor.erase(std::remove(secondChildDescriptor.begin(), secondChildDescriptor.end(), '\n'), secondChildDescriptor.end());
   addKeyValue("firstChildDescriptor", firstChildDescriptor);
   addKeyValue("secondChildDescriptor", secondChildDescriptor);
-  addInformation("BoundingBox");
+  auto startBoundingBoxAlgorithm = std::chrono::high_resolution_clock::now();
+  nrCallsBoundingBoxAlgorithm += 1;
+  
   // helper struct to avoid duplicate entries for areas
   struct AddedPair {
     size_t rowLeft_;
@@ -802,7 +803,7 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
   std::chrono::duration<double, std::micro> duration = endBoundingBoxAlgorithm - startBoundingBoxAlgorithm;
   timeInBoundingBoxAlgorithm += static_cast<long>(duration.count());
   addStatistics();
-  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationOSMGermany.txt", std::ios_base::app);
+  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/osm-germany/evaluationOSMGermany.txt", std::ios_base::app);
   fileStream << evalData << std::endl;
   fileStream.close();
   std::cerr << "added the following content to the file:" << std::endl;
