@@ -621,6 +621,12 @@ void SpatialJoinAlgorithms::addInformation(string algorithm) {
 // ____________________________________________________________________________
 Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
   addInformation("BoundingBox");
+  auto children = spatialJoin_.value()->getChildren();
+  assert(children.size() == 2);
+  auto firstChildDescriptor = children.at(0)->getCacheKey();
+  auto secondChildDescriptor = children.at(1)->getCacheKey();
+  addKeyValue("firstChildDescriptor", firstChildDescriptor);
+  addKeyValue("secondChildDescriptor", secondChildDescriptor);
   addTimeStamp("start of BoundingBoxAlgorithm");
   // helper struct to avoid duplicate entries for areas
   struct AddedPair {
