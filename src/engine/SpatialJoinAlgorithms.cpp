@@ -258,6 +258,7 @@ Result SpatialJoinAlgorithms::BaselineAlgorithm() {
                             rowRight, dist);
         continue;
       }
+      std::cerr << "outer loop: " << rowLeft << " of " << idTableLeft->size() << std::endl;
 
       // Ensure `maxResults_` constraint using priority queue
       intermediate.push(std::pair{rowRight, dist.getDouble()});
