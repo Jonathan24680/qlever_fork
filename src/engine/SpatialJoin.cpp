@@ -162,7 +162,7 @@ string SpatialJoin::getDescriptor() const {
     // Config type
     if constexpr (std::is_same_v<T, MaxDistanceConfig>) {
       return absl::StrCat("MaxDistJoin ", left, " to ", right, " of ",
-                          config.maxDist_, " kilometer(s)");
+                          config.maxDist_, " meter(s)");
     } else {
       static_assert(std::is_same_v<T, NearestNeighborsConfig>);
       return absl::StrCat("NearestNeighborsJoin ", left, " to ", right,
