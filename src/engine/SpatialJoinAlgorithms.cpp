@@ -258,7 +258,6 @@ Result SpatialJoinAlgorithms::BaselineAlgorithm() {
                             rowRight, dist);
         continue;
       }
-      std::cerr << "outer loop: " << rowLeft << " of " << idTableLeft->size() << std::endl;
 
       // Ensure `maxResults_` constraint using priority queue
       intermediate.push(std::pair{rowRight, dist.getDouble()});
@@ -267,6 +266,7 @@ Result SpatialJoinAlgorithms::BaselineAlgorithm() {
         intermediate.pop();
       }
     }
+    std::cerr << "outer loop: " << rowLeft << " of " << idTableLeft->size() << std::endl;
 
     // If we are using the priority queue, we didn't add the results in the
     // inner loop, so we do it now.
