@@ -216,23 +216,11 @@ Result SpatialJoinAlgorithms::BaselineAlgorithm() {
               rightJoinCol, rightSelectedCols, numColumns, maxDist,
               maxResults] = params_;
   IdTable result{numColumns, qec_->getAllocator()};
+  std::cerr << "numColumns: " << numColumns << std::endl;
 
   // cartesian product between the two tables, pairs are restricted according to
   // `maxDistance_` and `maxResults_`
   for (size_t rowLeft = 0; rowLeft < idTableLeft->size(); rowLeft++) {
-    // This priority queue stores the intermediate best results if `maxResults_`
-    // is used. Each intermediate result is stored as a pair of its `rowRight`
-    // and distance. Since the queue will hold at most `maxResults_ + 1` items,
-    // it is not a memory concern.
-    auto compare = [](std::pair<size_t, double> a,
-                      std::pair<size_t, double> b) {
-      return a.second < b.second;
-    };
-    std::priority_queue<std::pair<size_t, double>,
-                        std::vector<std::pair<size_t, double>>,
-                        decltype(compare)>
-        intermediate(compare);
-
     auto entryLeft = getRtreeEntry(idTableLeft, rowLeft, leftJoinCol);
 
     // Inner loop of cartesian product
@@ -259,28 +247,9 @@ Result SpatialJoinAlgorithms::BaselineAlgorithm() {
         continue;
       }
 
-      // Ensure `maxResults_` constraint using priority queue
-      intermediate.push(std::pair{rowRight, dist.getDouble()});
-      // Too many results? Drop the worst one
-      if (intermediate.size() > maxResults.value()) {
-        intermediate.pop();
-      }
+      
     }
     std::cerr << "outer loop: " << rowLeft << " of " << idTableLeft->size() << std::endl;
-
-    // If we are using the priority queue, we didn't add the results in the
-    // inner loop, so we do it now.
-    if (maxResults.has_value()) {
-      size_t numResults = intermediate.size();
-      for (size_t item = 0; item < numResults; item++) {
-        // Get and remove largest item from priority queue
-        auto [rowRight, dist] = intermediate.top();
-        intermediate.pop();
-
-        addResultTableEntry(&result, idTableLeft, idTableRight, rowLeft,
-                            rowRight, Id::makeFromDouble(dist));
-      }
-    }
   }
   return Result(std::move(result), std::vector<ColumnIndex>{},
                 Result::getMergedLocalVocab(*resultLeft, *resultRight));
