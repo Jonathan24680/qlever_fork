@@ -215,7 +215,7 @@ Result SpatialJoinAlgorithms::BaselineAlgorithm() {
   const auto [idTableLeft, resultLeft, idTableRight, resultRight, leftJoinCol,
               rightJoinCol, rightSelectedCols, numColumns, maxDist,
               maxResults] = params_;
-  IdTable result{numColumns, qec_->getAllocator()};
+  IdTable result{2500000, qec_->getAllocator()};
   std::cerr << "numColumns: " << numColumns << std::endl;
 
   // cartesian product between the two tables, pairs are restricted according to
