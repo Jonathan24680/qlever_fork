@@ -213,7 +213,7 @@ Result SpatialJoinAlgorithms::BaselineAlgorithm() {
     // Inner loop of cartesian product
     for (size_t rowRight = 0; rowRight < idTableRight->size(); rowRight++) {
       clock_t duration = clock() - startTime;
-      if ((float)duration/CLOCKS_PER_SEC > 450) {
+      if ((float)duration/CLOCKS_PER_SEC > 2400) {
         addTimeStamp("TIMEOUT");
         std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationBaselineAlg.txt", std::ios_base::app);
         fileStream << evalData << std::endl;
