@@ -597,7 +597,6 @@ std::array<bool, 2> SpatialJoinAlgorithms::isAPoleTouched(
 
 // ____________________________________________________________________________
 Point SpatialJoinAlgorithms::calculateMidpointOfBox(const Box& box)  {
-  auto startTime = std::chrono::high_resolution_clock::now();
   double lng = (box.min_corner().get<0>() + box.max_corner().get<0>()) / 2.0;
   double lat = (box.min_corner().get<1>() + box.max_corner().get<1>()) / 2.0;
   return Point(lng, lat);
@@ -800,8 +799,8 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
       Result(std::move(result), std::vector<ColumnIndex>{},
              Result::getMergedLocalVocab(*resultLeft, *resultRight));
   auto endBoundingBoxAlgorithm = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double, std::micro> duration = endBoundingBoxAlgorithm - startBoundingBoxAlgorithm;
-  timeInBoundingBoxAlgorithm += static_cast<long>(duration.count());
+  std::chrono::duration<double, std::micro> duration3 = endBoundingBoxAlgorithm - startBoundingBoxAlgorithm;
+  timeInBoundingBoxAlgorithm += static_cast<long>(duration3.count());
   addStatistics();
   std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationTimingAnalysisBuildSmallerRtreeWithRtreeAndNoMidpointApproximation.txt", std::ios_base::app);
   fileStream << evalData << std::endl;
