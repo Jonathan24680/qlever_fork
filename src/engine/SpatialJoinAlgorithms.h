@@ -162,6 +162,10 @@ class SpatialJoinAlgorithms {
   unsigned long nrCallscomputeDistArea = 0;
   unsigned long timeIngetAnyGeometry = 0;
   unsigned long nrCallsgetAnyGeometry = 0;
+  unsigned long timeInBuildRtree = 0;
+  unsigned long nrCallsBuildRtree = 0;
+  unsigned long timeInQueryRtree = 0;
+  unsigned long nrCallsQueryRtree = 0;
 
   std::string evalData = "";
   // Helper function which returns a GeoPoint if the element of the given table

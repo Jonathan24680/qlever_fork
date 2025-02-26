@@ -148,17 +148,19 @@ Id SpatialJoinAlgorithms::computeDist(RtreeEntry& geo1, RtreeEntry& geo2) {
   // use the already parsed geometries to calculate the distance
   if (useMidpointForAreas_ ||
       (geo1.geoPoint_.has_value() && geo2.geoPoint_.has_value())) {
+    auto a = Id::makeFromDouble(ad_utility::detail::wktDistImpl(
+        convertPoint(geo1), convertPoint(geo2)));
     auto endTime = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::micro> duration = endTime - startTime;
     timeIncomputeDist += static_cast<long>(duration.count());
-    return Id::makeFromDouble(ad_utility::detail::wktDistImpl(
-        convertPoint(geo1), convertPoint(geo2)));
+    return a;
   } else {
     // at least one area
+    auto a = Id::makeFromDouble(computeDist(getIndex(geo1), getIndex(geo2)));
     auto endTime = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::micro> duration = endTime - startTime;
     timeIncomputeDist += static_cast<long>(duration.count());
-    return Id::makeFromDouble(computeDist(getIndex(geo1), getIndex(geo2)));
+    return a;
   }
 }
 
@@ -682,6 +684,8 @@ void SpatialJoinAlgorithms::addStatistics() {
   addFunction("computeQueryBoxForLargeDistances", nrCallscomputeQueryBoxForLargeDistances, timeIncomputeQueryBoxForLargeDistances);
   addFunction("computeDistArea", nrCallscomputeDistArea, timeIncomputeDistArea);
   addFunction("getAnyGeometry", nrCallsgetAnyGeometry, timeIngetAnyGeometry);
+  addFunction("buildRtree", nrCallsBuildRtree, timeInBuildRtree);
+  addFunction("queryRtree", nrCallsQueryRtree, timeInQueryRtree);
 }
 
 // ____________________________________________________________________________
@@ -717,6 +721,8 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
     std::swap(smallerResJoinCol, otherResJoinCol);
   }
 
+  nrCallsBuildRtree += 1;
+  auto startBuildRtree = std::chrono::high_resolution_clock::now();
   // build rtree with one child
   bgi::rtree<Value, bgi::quadratic<16>, bgi::indexable<Value>,
              bgi::equal_to<Value>, ad_utility::AllocatorWithLimit<Value>>
@@ -735,6 +741,9 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
     rtree.insert(std::pair(entry.value().boundingBox_.value(),
                            std::move(entry.value())));
   }
+  auto endBuildRtree = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> duration = endBuildRtree - startBuildRtree;
+  timeInBuildRtree += static_cast<long>(duration.count());
 
   
   // query rtree with the other child
@@ -753,9 +762,16 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
 
     results.clear();
 
+    nrCallsQueryRtree += 1;
+    auto startQueryRtree = std::chrono::high_resolution_clock::now();
+
     ql::ranges::for_each(queryBox, [&](const Box& bbox) {
       rtree.query(bgi::intersects(bbox), std::back_inserter(results));
     });
+
+    auto endQueryRtree = std::chrono::high_resolution_clock::now();
+    std::chrono::duration2<double, std::micro> duration = endQueryRtree - startQueryRtree;
+    timeInQueryRtree += static_cast<long>(duration2.count());
 
     std::set<AddedPair> pairs;
     ql::ranges::for_each(results, [&](Value& res) {
