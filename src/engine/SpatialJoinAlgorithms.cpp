@@ -770,7 +770,7 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
     });
 
     auto endQueryRtree = std::chrono::high_resolution_clock::now();
-    std::chrono::duration2<double, std::micro> duration = endQueryRtree - startQueryRtree;
+    std::chrono::duration<double, std::micro> duration2 = endQueryRtree - startQueryRtree;
     timeInQueryRtree += static_cast<long>(duration2.count());
 
     std::set<AddedPair> pairs;
@@ -803,7 +803,7 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
   std::chrono::duration<double, std::micro> duration = endBoundingBoxAlgorithm - startBoundingBoxAlgorithm;
   timeInBoundingBoxAlgorithm += static_cast<long>(duration.count());
   addStatistics();
-  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationTimingAnalysisBuildSmallerRtree.txt", std::ios_base::app);
+  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationTimingAnalysisBuildSmallerRtreeWithRtreeAndNoMidpointApproximation.txt", std::ios_base::app);
   fileStream << evalData << std::endl;
   fileStream.close();
   std::cerr << "added the following content to the file:" << std::endl;
