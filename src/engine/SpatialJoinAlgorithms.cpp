@@ -802,7 +802,7 @@ Result SpatialJoinAlgorithms::BoundingBoxAlgorithm() {
   std::chrono::duration<double, std::micro> duration3 = endBoundingBoxAlgorithm - startBoundingBoxAlgorithm;
   timeInBoundingBoxAlgorithm += static_cast<long>(duration3.count());
   addStatistics();
-  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationTimingAnalysisBuildSmallerRtreeWithRtreeAndNoMidpointApproximation.txt", std::ios_base::app);
+  std::ofstream fileStream("/local/data-ssd/zellerj/qlever-indices/evaluationDatasetSmall/evaluationTimingAnalysisBuildSmallerRtreeWithRtreeAndMidpointApproximation.txt", std::ios_base::app);
   fileStream << evalData << std::endl;
   fileStream.close();
   std::cerr << "added the following content to the file:" << std::endl;
